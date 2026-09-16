@@ -80,7 +80,7 @@ export function useItems(filters: ItemFilters, enabled = true) {
   return useInfiniteQuery({
     ...itemQueries.list(filters, articlePageSize),
     enabled,
-    refetchInterval: 10_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
 }

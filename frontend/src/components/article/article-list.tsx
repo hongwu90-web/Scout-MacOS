@@ -188,7 +188,7 @@ export function ArticleList() {
                     ? "flex flex-col gap-1 p-2"
                     : selectedArticleId !== null
                     ? "flex flex-col gap-2.5 p-2"
-                    : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 p-2",
+                    : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 p-2",
                 )}
               >
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
@@ -262,7 +262,7 @@ export function ArticleList() {
                     className={cn(
                       selectedArticleId !== null
                         ? "flex flex-col gap-2.5 p-2"
-                        : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 p-2",
+                        : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 p-2",
                     )}
                   >
                     {articles

@@ -13,7 +13,3 @@ backend/internal/web/dist/*
 .env*
 # .env.example is an exception as it only contains dummy secrets.
 !.env.example
-
-# Binaries
-scout
-backend/fusion

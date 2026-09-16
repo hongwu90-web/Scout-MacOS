@@ -75,7 +75,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelega
             backing: .buffered,
             defer: false
         )
-        window.title = "Scout v1.47"
+        window.title = "Scout v1.48"
         window.minSize = CGSize(width: 850, height: 550)
         window.isReleasedWhenClosed = false
         window.delegate = self

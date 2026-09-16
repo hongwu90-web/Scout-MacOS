@@ -184,6 +184,9 @@ func (h *Handler) login(c *gin.Context) {
 	}
 
 	username := "admin"
+	if h.config != nil && strings.TrimSpace(h.config.Username) != "" {
+		username = strings.TrimSpace(h.config.Username)
+	}
 	if req.Username != nil && strings.TrimSpace(*req.Username) != "" {
 		username = strings.TrimSpace(*req.Username)
 	}

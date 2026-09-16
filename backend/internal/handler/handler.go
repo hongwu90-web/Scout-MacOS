@@ -53,6 +53,10 @@ func New(store *store.Store, config *config.Config, puller interface {
 	RefreshAll(ctx context.Context) (int, error)
 	GetCloudFeedSync() *pull.CloudFeedSync
 }) (*Handler, error) {
+	adminUser := strings.TrimSpace(config.Username)
+	if adminUser == "" {
+		adminUser = "admin"
+	}
 	adminPass := strings.TrimSpace(config.Password)
 	if adminPass == "" {
 		adminPass = "admin"
@@ -63,8 +67,8 @@ func New(store *store.Store, config *config.Config, puller interface {
 	}
 
 	if store != nil {
-		if _, err := store.EnsureUser("admin", passwordHash); err != nil {
-			slog.Warn("failed to ensure default admin user", "error", err)
+		if _, err := store.EnsureUser(adminUser, passwordHash); err != nil {
+			slog.Warn("failed to ensure default user", "username", adminUser, "error", err)
 		}
 	}
 

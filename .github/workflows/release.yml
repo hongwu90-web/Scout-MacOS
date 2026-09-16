@@ -1,10 +1,9 @@
-name: Release Scout
+name: release
 
 on:
   push:
     tags:
       - "v*.*.*"
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,59 +13,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-macos:
-    name: Build macOS Standalone App
-    runs-on: macos-latest
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - name: Set up toolchains
         uses: ./.github/actions/setup-toolchains
         with:
-          setup-go: "true"
           setup-node: "true"
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Build macOS Application Bundle
-        run: |
-          chmod +x ./scripts/build-macos-app.sh
-          ./scripts/build-macos-app.sh
-
-      - name: Upload macOS App Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scout-macos-app
-          path: dist/Scout-*.zip
-          if-no-files-found: error
-
-  publish-release:
-    name: Publish GitHub Release
-    needs: [build-macos]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Download macOS App Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: scout-macos-app
-          path: dist/
-
+      - name: Build release artifacts
+        run: ./scripts.sh release
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          if [ "$TAG" = "main" ] || [ -z "$TAG" ]; then
-            TAG="v1.40"
-          fi
-          gh release create "${TAG}" dist/Scout-*.zip \
-            --title "Scout ${TAG}" \
-            --generate-notes
+          gh release create ${GITHUB_REF_NAME} ./dist/*.zip ./dist/fusion-linux-* ./dist/checksums.txt \
+            --draft --generate-notes

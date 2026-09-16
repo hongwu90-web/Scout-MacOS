@@ -277,6 +277,30 @@ export function BulkActionsBar({
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Direct Select All / Deselect All action */}
+          <button
+            type="button"
+            disabled={articles.length === 0}
+            onClick={() => {
+              if (selectedCount === articles.length && articles.length > 0) {
+                deselectAll();
+              } else {
+                selectAll(articles.map((a) => a.id));
+              }
+            }}
+            className={cn(
+              "px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-colors border disabled:opacity-40",
+              selectedCount === articles.length && articles.length > 0
+                ? "bg-muted text-muted-foreground border-border hover:bg-accent hover:text-foreground"
+                : "bg-primary text-primary-foreground border-primary hover:bg-primary/90",
+            )}
+            title={selectedCount === articles.length && articles.length > 0 ? "Deselect all articles" : "Select all articles"}
+          >
+            {selectedCount === articles.length && articles.length > 0
+              ? "Deselect All"
+              : "Select All"}
+          </button>
+
           <div className="h-4 w-[1px] bg-border/80 mx-0.5" />
 
           {/* Star / Unstar */}

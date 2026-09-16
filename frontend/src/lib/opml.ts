@@ -25,16 +25,36 @@ export function parseOPML(content: string): ParsedFeed[] {
   if (!body) return feeds;
 
   const processOutline = (outline: Element, groupName?: string) => {
-    const xmlUrl = outline.getAttribute("xmlUrl") || outline.getAttribute("xmlurl");
+    const xmlUrl = outline.getAttribute("xmlUrl") || outline.getAttribute("xmlurl") || outline.getAttribute("url");
     const htmlUrl = outline.getAttribute("htmlUrl") || outline.getAttribute("htmlurl");
     const title =
       outline.getAttribute("title") || outline.getAttribute("text") || "";
 
     if (xmlUrl) {
+      let cleanLink = xmlUrl.trim();
+      const lower = cleanLink.toLowerCase();
+      if (lower.startsWith("feed:http://")) {
+        cleanLink = cleanLink.slice(5);
+      } else if (lower.startsWith("feed:https://")) {
+        cleanLink = cleanLink.slice(5);
+      } else if (lower.startsWith("feed://")) {
+        cleanLink = "https://" + cleanLink.slice(7);
+      } else if (lower.startsWith("feed:")) {
+        cleanLink = "https://" + cleanLink.slice(5);
+      }
+
+      if (
+        !cleanLink.startsWith("http://") &&
+        !cleanLink.startsWith("https://") &&
+        !cleanLink.startsWith("/api/feeds/synthetic")
+      ) {
+        cleanLink = "https://" + cleanLink;
+      }
+
       // This is a feed
       feeds.push({
-        name: title || xmlUrl,
-        link: xmlUrl,
+        name: title || cleanLink,
+        link: cleanLink,
         siteUrl: htmlUrl?.trim() || undefined,
         groupName,
       });

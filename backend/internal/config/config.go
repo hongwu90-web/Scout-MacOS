@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	DBPath        string
+	Username      string // Username for default account from env (default: admin)
 	Password      string // Plaintext password from env
 	Host          string // Listening host (default: 127.0.0.1 for local isolation)
 	Port          int
@@ -144,6 +145,7 @@ func Load() (*Config, error) {
 
 	return &Config{
 		DBPath:             dbPath,
+		Username:           getEnvString("FUSION_USERNAME", "admin"),
 		Password:           password,
 		Host:               getEnvString("FUSION_HOST", "127.0.0.1"),
 		Port:               parsedPort,

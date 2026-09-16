@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func ValidateRequestURL(ctx context.Context, rawURL string, allowPrivate bool) error {
+func ValidateURLStructure(rawURL string, allowPrivate bool) error {
 	parsed, err := url.ParseRequestURI(strings.TrimSpace(rawURL))
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
@@ -22,6 +22,29 @@ func ValidateRequestURL(ctx context.Context, rawURL string, allowPrivate bool) e
 	if host == "" {
 		return fmt.Errorf("url host is required")
 	}
+
+	if !allowPrivate {
+		lowerHost := strings.ToLower(host)
+		if strings.EqualFold(host, "localhost") || strings.HasSuffix(lowerHost, ".local") || strings.HasSuffix(lowerHost, ".internal") {
+			return fmt.Errorf("private host is not allowed")
+		}
+		if ip := net.ParseIP(host); ip != nil {
+			if isPrivateOrLocalIP(ip) {
+				return fmt.Errorf("private host is not allowed")
+			}
+		}
+	}
+
+	return nil
+}
+
+func ValidateRequestURL(ctx context.Context, rawURL string, allowPrivate bool) error {
+	if err := ValidateURLStructure(rawURL, allowPrivate); err != nil {
+		return err
+	}
+
+	parsed, _ := url.ParseRequestURI(strings.TrimSpace(rawURL))
+	host := strings.TrimSpace(parsed.Hostname())
 
 	if !allowPrivate {
 		if err := validatePublicHost(ctx, host); err != nil {

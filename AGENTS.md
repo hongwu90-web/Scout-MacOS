@@ -12,7 +12,7 @@
 
 ## Project Context
 
-- This project is an open-source, lightweight RSS reader, webpage monitor, and aggregator.
+- This project is an open-source, lightweight RSS reader and aggregator.
 - Prioritize simplicity and maintainability over complexity.
 
 ## Code Standards
@@ -46,7 +46,8 @@
 ## Dev-to-Dist Release Workflow
 
 - Do **NOT** automatically build the standalone app after routine code changes. Only build when explicitly instructed by the user.
-- Whenever requested to build or update the standalone macOS desktop app (`Scout.app`), execute `./scripts/build-macos-app.sh`.
+- Whenever requested to build or update the standalone macOS desktop app (`Scout.app`), follow `docs/DEV_TO_DIST_CHECKLIST.md`.
 - Always verify frontend build sync (`rm -rf backend/internal/web/dist && cp -R frontend/dist/. backend/internal/web/dist/`).
 - Running `./scripts/build-macos-app.sh` builds into `dist/`. Do **NOT** automatically replace or copy into `/Applications/Scout.app` (which is kept separate) unless explicitly instructed to do so.
 - Ensure React Query caches and unread counters (`queryKeys.feeds.all`, `queryKeys.focusFeeds.all`, `queryKeys.items.all`) are properly invalidated upon read/unread mutations.
+

@@ -30,7 +30,7 @@ jobs:
           setup-node: "true"
       - name: Install frontend dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile --prefer-offline
       - name: Check i18n dictionaries
         working-directory: frontend
         run: pnpm run check:i18n

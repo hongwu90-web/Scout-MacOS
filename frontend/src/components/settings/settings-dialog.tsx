@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Bug, Copy, Download, Info, Keyboard, Palette, User } from "lucide-react";
+import { Bug, Download, Info, Keyboard, LogOut, Palette, User } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +21,6 @@ import { usePWAInstall } from "@/hooks/use-pwa-install";
 import { localeLabels, useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { sessionAPI } from "@/lib/api";
-import { Input } from "@/components/ui/input";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -168,14 +167,8 @@ function AppearanceContent() {
 
 function AccountContent() {
   const { t } = useI18n();
-
-  // Current user state
   const [username, setUsername] = useState("");
-  const [feverKey, setFeverKey] = useState("");
-
-  // Username form state
-  const [newUsername, setNewUsername] = useState("");
-  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Load current user on mount
   const loadUser = useCallback(async () => {
@@ -183,94 +176,50 @@ function AccountContent() {
       const res = await sessionAPI.getMe();
       if (!res.data) return;
       setUsername(res.data.username);
-      setNewUsername(res.data.username);
-      setFeverKey(res.data.fever_api_key ?? "");
     } catch {
       // silently fail – user will see empty fields
     }
   }, []);
 
-  useEffect(() => { void loadUser(); }, [loadUser]);
+  useEffect(() => {
+    void loadUser();
+  }, [loadUser]);
 
-  const handleUsernameSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = newUsername.trim();
-    if (!trimmed) {
-      toast.error(t("settings.account.usernameEmpty"));
-      return;
-    }
-    setUsernameSaving(true);
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
     try {
-      await sessionAPI.updateUsername({ username: trimmed });
-      setUsername(trimmed);
-      toast.success(t("settings.account.usernameSaved"));
-    } catch (err: any) {
-      const msg = err?.response?.data?.message ?? "";
-      if (msg.includes("already taken")) {
-        toast.error(t("settings.account.usernameTaken"));
-      } else {
-        toast.error(msg || "Failed to update username");
-      }
-    } finally {
-      setUsernameSaving(false);
+      await sessionAPI.logout();
+      window.location.reload();
+    } catch {
+      toast.error("Failed to sign out");
+      setIsLoggingOut(false);
     }
-  };
-
-  const copyFeverKey = async () => {
-    if (!feverKey) return;
-    await navigator.clipboard.writeText(feverKey);
-    toast.success(t("settings.account.feverKeyCopied"));
   };
 
   return (
-    <div className="space-y-7">
-      {/* Username */}
-      <form onSubmit={(e) => { void handleUsernameSubmit(e); }} className="space-y-3">
+    <div className="space-y-6">
+      <div className="rounded-md border border-border/80 p-4 bg-muted/20 space-y-4">
         <div className="space-y-1">
-          <p className="text-sm font-medium">{t("settings.account.username")}</p>
-          <p className="text-[13px] text-muted-foreground">
-            {t("settings.account.usernameDescription")}
+          <p className="text-xs uppercase font-mono text-muted-foreground">{t("settings.account.username")}</p>
+          <p className="text-base font-bold font-mono text-foreground">
+            {username || t("common.unknown")}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Input
-            id="account-username"
-            value={newUsername}
-            onChange={(e) => setNewUsername(e.target.value)}
-            placeholder={username}
-            className="max-w-xs"
-          />
-          <Button type="submit" size="sm" disabled={usernameSaving || newUsername.trim() === username}>
-            {usernameSaving ? t("settings.account.saving") : t("settings.account.save")}
-          </Button>
-        </div>
-      </form>
 
-      <div className="border-t border-border" />
-
-      {/* Fever API Key */}
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <p className="text-sm font-medium">{t("settings.account.feverKey")}</p>
-          <p className="text-[13px] text-muted-foreground">
-            {t("settings.account.feverKeyDescription")}
+        <div className="border-t border-border/50 pt-3 flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {t("settings.account.logoutDescription")}
           </p>
-        </div>
-        <div className="flex gap-2">
-          <Input
-            id="account-fever-key"
-            value={feverKey || t("settings.account.feverKeyNone")}
-            readOnly
-            className="max-w-xs font-mono text-xs"
-          />
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => { void copyFeverKey(); }}
-            disabled={!feverKey}
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex items-center gap-1.5 text-xs font-mono uppercase text-destructive hover:bg-destructive/10 hover:border-destructive/40"
           >
-            <Copy className="h-4 w-4" />
+            <LogOut className="h-3.5 w-3.5" />
+            <span>{isLoggingOut ? t("settings.account.saving") : t("settings.account.logout")}</span>
           </Button>
         </div>
       </div>

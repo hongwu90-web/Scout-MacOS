@@ -51,8 +51,10 @@ func New(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	db.SetMaxOpenConns(50)
-	db.SetMaxIdleConns(25)
+	// SQLite is an embedded single-writer database. Keeping connection pool modest
+	// eliminates lock contention and reduces memory usage on small VMs.
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
 
 	if err := db.Ping(); err != nil {
 		_ = db.Close()

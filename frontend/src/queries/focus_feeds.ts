@@ -9,7 +9,7 @@ export function useFocusFeeds() {
       const response = await focusFeedAPI.list();
       return response.data ?? [];
     },
-    refetchInterval: 10_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
     staleTime: 0,
   });

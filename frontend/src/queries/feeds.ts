@@ -24,7 +24,7 @@ export const feedQueries = {
 export function useFeeds() {
   return useQuery({
     ...feedQueries.list(),
-    refetchInterval: 10_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
     staleTime: 0,
   });

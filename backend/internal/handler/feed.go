@@ -100,6 +100,27 @@ func (h *Handler) getFeed(c *gin.Context) {
 	dataResponse(c, feed)
 }
 
+func normalizeFeedURL(raw string) string {
+	link := strings.TrimSpace(raw)
+	lower := strings.ToLower(link)
+	if strings.HasPrefix(lower, "feed:http://") {
+		link = link[5:]
+	} else if strings.HasPrefix(lower, "feed:https://") {
+		link = link[5:]
+	} else if strings.HasPrefix(lower, "feed://") {
+		link = "https://" + link[7:]
+	} else if strings.HasPrefix(lower, "feed:") {
+		link = "https://" + link[5:]
+	}
+
+	if !strings.HasPrefix(link, "/api/feeds/synthetic") {
+		if !strings.HasPrefix(link, "http://") && !strings.HasPrefix(link, "https://") {
+			link = "https://" + link
+		}
+	}
+	return link
+}
+
 func (h *Handler) createFeed(c *gin.Context) {
 	userID := getUserID(c)
 	var req createFeedRequest
@@ -107,12 +128,9 @@ func (h *Handler) createFeed(c *gin.Context) {
 		badRequestError(c, "invalid request")
 		return
 	}
-	link := strings.TrimSpace(req.Link)
+	link := normalizeFeedURL(req.Link)
+	req.Link = link
 	if !strings.HasPrefix(link, "/api/feeds/synthetic") {
-		if !strings.HasPrefix(link, "http://") && !strings.HasPrefix(link, "https://") {
-			link = "https://" + link
-			req.Link = link
-		}
 		if err := httpc.ValidateRequestURL(c.Request.Context(), req.Link, h.config.AllowPrivateFeeds); err != nil {
 			badRequestError(c, "invalid link")
 			return
@@ -176,11 +194,14 @@ func (h *Handler) updateFeed(c *gin.Context) {
 		params.Name = req.Name
 	}
 	if req.Link != nil {
-		if err := httpc.ValidateRequestURL(c.Request.Context(), *req.Link, h.config.AllowPrivateFeeds); err != nil {
-			badRequestError(c, "invalid link")
-			return
+		link := normalizeFeedURL(*req.Link)
+		if !strings.HasPrefix(link, "/api/feeds/synthetic") {
+			if err := httpc.ValidateRequestURL(c.Request.Context(), link, h.config.AllowPrivateFeeds); err != nil {
+				badRequestError(c, "invalid link")
+				return
+			}
 		}
-		params.Link = req.Link
+		params.Link = &link
 	}
 	if req.SiteURL != nil {
 		params.SiteURL = req.SiteURL
@@ -463,18 +484,62 @@ func (h *Handler) batchCreateFeeds(c *gin.Context) {
 		return
 	}
 
-	inputs := make([]store.BatchCreateFeedsInput, len(req.Feeds))
-	for i, f := range req.Feeds {
-		if err := httpc.ValidateRequestURL(c.Request.Context(), f.Link, h.config.AllowPrivateFeeds); err != nil {
-			badRequestError(c, "invalid link")
-			return
+	var inputs []store.BatchCreateFeedsInput
+	var validationErrors []string
+
+	var defaultGroupID int64
+	for _, f := range req.Feeds {
+		if f.GroupID <= 0 {
+			if defaultGroupID == 0 {
+				groups, err := h.store.ListGroups(userID)
+				if err == nil && len(groups) > 0 {
+					defaultGroupID = groups[0].ID
+				} else {
+					g, err := h.store.CreateGroup(userID, "Default")
+					if err == nil && g != nil {
+						defaultGroupID = g.ID
+					} else {
+						defaultGroupID = 1
+					}
+				}
+			}
+			break
 		}
-		inputs[i] = store.BatchCreateFeedsInput{
-			GroupID: f.GroupID,
+	}
+
+	for _, f := range req.Feeds {
+		link := normalizeFeedURL(f.Link)
+		if link == "" {
+			continue
+		}
+
+		if !strings.HasPrefix(link, "/api/feeds/synthetic") {
+			if err := httpc.ValidateURLStructure(link, h.config.AllowPrivateFeeds); err != nil {
+				validationErrors = append(validationErrors, fmt.Sprintf("%s (%s): %v", f.Name, f.Link, err))
+				continue
+			}
+		}
+
+		groupID := f.GroupID
+		if groupID <= 0 {
+			groupID = defaultGroupID
+		}
+
+		inputs = append(inputs, store.BatchCreateFeedsInput{
+			GroupID: groupID,
 			Name:    f.Name,
-			Link:    f.Link,
+			Link:    link,
 			SiteURL: f.SiteURL,
-		}
+		})
+	}
+
+	if len(inputs) == 0 {
+		dataResponse(c, gin.H{
+			"created": 0,
+			"failed":  len(validationErrors),
+			"errors":  validationErrors,
+		})
+		return
 	}
 
 	result, err := h.store.BatchCreateFeeds(userID, inputs)
@@ -495,10 +560,12 @@ func (h *Handler) batchCreateFeeds(c *gin.Context) {
 		}(id)
 	}
 
+	allErrors := append(validationErrors, result.Errors...)
+
 	dataResponse(c, gin.H{
 		"created": result.Created,
-		"failed":  len(result.Errors),
-		"errors":  result.Errors,
+		"failed":  len(allErrors),
+		"errors":  allErrors,
 	})
 }
 

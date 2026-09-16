@@ -1,231 +1,143 @@
-<div align="center">
-  <h1>🔭 SCOUT</h1>
-  <p><strong>Privacy-First Desktop Intelligence Dashboard, RSS Reader & Web Change Monitor</strong></p>
-  <p>
-    <a href="#key-features">Key Features</a> •
-    <a href="#quickstart--installation">Installation</a> •
-    <a href="#-247-monitoring-cloudflare-vs-local-fallback">24/7 Monitoring Guide</a> •
-    <a href="#architecture">Architecture</a> •
-    <a href="#contributing">Contributing</a> •
-    <a href="#license">License</a>
-  </p>
-</div>
+<h1 align="center">00 / SCOUT</h1>
+<p align="center">A high-performance intelligence aggregator & webpage change monitoring platform.</p>
 
----
+> 📖 **New Developer or Non-Coder?** Check out the complete [**App Architecture & Developer Guide**](./ARCHITECTURE_AND_DEV_GUIDE.md) to understand how the app works, run the local dev server, and modify features step-by-step!
 
-## What is Scout?
+<p align="center">
+  <img src="./assets/article_list_light.png" alt="Article list view" width="48.5%" />&nbsp;
+  <img src="./assets/article_detail_light.png" alt="Article detail view" width="48.5%" />
+</p>
 
-**Scout** is a modern, standalone macOS desktop application and self-hosted intelligence platform designed for researchers, analysts, and information workers who need high-velocity reading without noise, algorithmic feeds, or surveillance.
+## Features
 
-Unlike commercial feed readers that monetize user attention, push paid upsells, and track reading history, Scout runs **100% locally** with private SQLite storage and zero telemetry.
+- **Webpage Change Monitoring**: Scrapes webpages with CSS selectors, computes visual diffs, and highlights additions in light green.
+- **Drag & Drop Organization**: Drag and drop feeds or webpage monitors between groups in real-time.
+- **Right-Click Context Menus**: Right-click feeds, monitors, or group headers for instant actions.
+- **Fast RSS Reading Workflow**: Unread tracking, bookmarks, search, keyboard shortcuts.
+- **Fever API Compatibility**: Works with mobile apps (Reeder, Unread, FeedMe).
 
-In addition to full-fidelity RSS/Atom feeds, Scout introduces an **Automated Webpage Differential Engine** that tracks arbitrary websites without RSS feeds, highlighting added and removed content side-by-side.
+## Installation
 
----
+<details>
+  <summary><strong>Option 1 (Recommended): Run pre-built binary from Releases</strong></summary>
 
-## ⚡ Key Features
+Download the binary for your platform from [Releases](https://github.com/0x2E/fusion/releases), then run:
 
-- **🛡️ 100% Local-First & Private**: All articles, bookmarks, and read states are saved in your local SQLite database on your device. Zero telemetry, zero external tracking.
-- **🔍 Webpage Change Monitoring**: Track non-RSS websites, blogs, or regulatory portals. Scout captures visual snapshots and displays side-by-side diffs highlighting new updates.
-- **🛠️ Heuristic Feed Builder**: Paste any URL without an RSS feed. Scout scans repeating DOM layouts and auto-suggests CSS selectors to build a structured RSS feed instantly.
-- **⌨️ High-Velocity Keyboard Triage**: Full keyboard navigation (`J`/`K` navigation, `O`/`Enter` open drawer, `M` toggle read, `B` bookmark, `X` toggle selection).
-- **📦 Bulk Curation**: Multi-select articles with `Shift + Click` or `* A`, batch-mark as read, export to CSV (`~/Downloads`), create pre-filled email digest drafts, or trigger macOS native print/PDF export sheets.
-- **🌐 Full-Text Auto Extraction**: Automatically extract and format full article bodies from truncated or summary-only feeds.
-- **🍎 Standalone Native macOS Shell**: Bundled with a lightweight Go daemon and native Swift WebKit wrapper. Sub-400ms startup time, tiny memory footprint, and no Electron overhead.
-- **📱 Fever API Support**: Seamlessly syncs with third-party mobile clients like Reeder, Unread, or FeedMe.
-
----
-
-## 🚀 Quickstart & Installation
-
-### Option 1: Standalone macOS App (Recommended)
-
-1. Download the latest `Scout-macOS-arm64.zip` from [GitHub Releases](../../releases).
-2. Unzip and drag `Scout.app` to your `/Applications` folder.
-3. Open Scout. The local database and services initialize automatically.
-
-### Option 2: Build macOS App From Source
-
-Requires Go `1.22+`, Node.js `20+`, and Xcode command-line tools (`swiftc`):
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/your-username/scout.git
-cd scout
-
-# 2. Build the macOS desktop app
-chmod +x ./scripts/build-macos-app.sh
-./scripts/build-macos-app.sh
-
-# 3. Launch the compiled app
-open ./dist/Scout.app
+```shell
+chmod +x fusion
+FUSION_PASSWORD="fusion" ./fusion
 ```
 
-### Option 3: Run in Web / Dev Mode
+Windows (PowerShell):
 
-You can run Scout as a standalone local web application on any operating system (macOS, Linux, Windows):
-
-```bash
-# Terminal 1: Backend
-cd backend
-cp ../.env.example .env
-go run ./cmd/fusion
-
-# Terminal 2: Frontend
-cd frontend
-npm install
-npm run dev
+```powershell
+$env:FUSION_PASSWORD="fusion"
+.\fusion.exe
 ```
 
-Open `http://localhost:5173` (or `http://localhost:8080` in production mode).
+Open `http://localhost:8080`.
+</details>
 
-### Option 4: Run with Docker
+<details>
+  <summary><strong>Option 2: Run with Docker</strong></summary>
 
-```bash
-docker run -d \
-  --name scout \
-  -p 8080:8080 \
-  -v $(pwd)/data:/data \
-  ghcr.io/your-username/scout:latest
+`latest` is the latest release image.
+
+`main` is the latest development build.
+
+```shell
+docker run -it -d -p 8080:8080 \
+  -v $(pwd)/fusion:/data \
+  -e FUSION_PASSWORD="fusion" \
+  ghcr.io/0x2e/fusion:latest
 ```
 
----
+Open `http://localhost:8080`.
 
-## ☁️ 24/7 Monitoring: Cloudflare vs. Local Fallback
+Docker Compose example:
 
-Scout supports two different modes for checking website changes and polling feeds:
-
+```yaml
+version: "3"
+services:
+  fusion:
+    image: ghcr.io/0x2e/fusion:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - FUSION_PASSWORD=fusion
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
 ```
-┌────────────────────────────────────────┐       ┌────────────────────────────────────────┐
-│        Local Mode (Default)            │       │     Cloudflare Edge Worker Mode        │
-├────────────────────────────────────────┤       ├────────────────────────────────────────┤
-│ • Zero setup required                  │       │ • 24/7 autonomous cloud checking       │
-│ • Runs directly on your Mac            │       │ • Zero cost (Cloudflare free tier)     │
-│ ⚠️ Pauses when Mac sleeps or is off    │       │ ⚡ Checks run even when Mac is off     │
-│ ⚠️ Can miss ephemeral intraday diffs   │       │ 🔄 Instant sync on opening Scout       │
-└────────────────────────────────────────┘       └────────────────────────────────────────┘
-```
+</details>
 
-### 1. The Local Fallback (Default Mode) & Its Limitations
+<details>
+  <summary><strong>Option 3: Build from source</strong></summary>
 
-By default, Scout performs all feed updates and webpage checks locally on your computer:
-- **How it works**: Scout runs a local scheduler while the application is active, plus an optional macOS background LaunchAgent (`./scripts/setup-background-agent.sh`).
-- **The Physical Limitation**: Local monitoring can **only execute when your computer is awake and powered on**. 
-  - If your laptop lid is closed, your machine enters system sleep, or your Wi-Fi is disconnected, all scheduled checks are naturally suspended.
-  - When your Mac wakes up, checks resume, but any transient webpage updates that were published and subsequently removed while your computer was asleep will be missed.
+See [Contributing](./CONTRIBUTING.md).
+</details>
 
-### 2. The Cloudflare Edge Advantage (Recommended for 24/7 Monitoring)
+<details>
+  <summary><strong>Option 4: One-click deployment</strong></summary>
 
-To achieve continuous, around-the-clock monitoring without keeping your computer awake or running a noisy home server, Scout provides a dedicated **Cloudflare Worker + D1 Database** template located in [`cloud-monitor/`](./cloud-monitor).
+- [Deploy on Fly.io](./fly.toml)
+- [Deploy on Railway](https://railway.com/template/XSPFK0?referralCode=milo) (community maintained)
+</details>
 
-- **100% Free**: Operates entirely within the Cloudflare Workers free tier (default cron runs every 5 minutes, consuming <0.3% of the 100,000 daily free requests limit).
-- **Autonomous & Serverless**: Scrapes monitored pages in the background 24 hours a day, 7 days a week.
-- **Instant Desktop Sync**: The moment you open `Scout.app` on your Mac, it connects to your private worker via a secure bearer token, pulls all diff history recorded while you were away, and displays new changes side-by-side.
+## Configuration
 
----
+Most users only need one setting to get started:
 
-### 3. Step-by-Step Guide: Enabling Cloudflare 24/7 Monitoring
+- Set `FUSION_PASSWORD`.
+- For local trusted environments only: set `FUSION_ALLOW_EMPTY_PASSWORD=true` to run without auth when OIDC is also disabled.
 
-Setting up your personal 24/7 cloud monitor takes under 3 minutes:
+Then configure based on your goal:
 
-#### Step A: Prerequisites
-- A free [Cloudflare Account](https://dash.cloudflare.com/sign-up).
-- Node.js 18+ installed on your Mac.
+- Run locally or on a home server
+  - Optional: `FUSION_PORT`, `FUSION_DB_PATH`
+- Expose Fusion behind a reverse proxy
+  - Configure: `FUSION_CORS_ALLOWED_ORIGINS`, `FUSION_TRUSTED_PROXIES`
+- Use mobile/desktop Fever clients (Reeder, Unread, FeedMe)
+  - Configure: `FUSION_FEVER_USERNAME` (default: `fusion`)
+  - Guide: [`docs/fever-api.md`](./docs/fever-api.md)
+- Use SSO instead of password-only login
+  - Configure: `FUSION_OIDC_*`
+  - Set `FUSION_OIDC_REDIRECT_URI` to `https://<host>/api/oidc/callback`
+  - `https://<host>/oidc/callback` is accepted for compatibility
+- Tune feed pull behavior
+  - Configure: `FUSION_PULL_INTERVAL`, `FUSION_PULL_TIMEOUT`, `FUSION_PULL_CONCURRENCY`, `FUSION_PULL_MAX_BACKOFF`
+  - Optional for private networks: `FUSION_ALLOW_PRIVATE_FEEDS`
+- Troubleshoot deployments
+  - Configure: `FUSION_LOG_LEVEL`, `FUSION_LOG_FORMAT`
 
-#### Step B: Deploy the Edge Worker
-1. Navigate to the `cloud-monitor` directory:
-   ```bash
-   cd cloud-monitor
-   npm install
-   ```
+For the complete variable reference, see [`.env.example`](./.env.example).
 
-2. Authenticate Wrangler with your Cloudflare account:
-   ```bash
-   npx wrangler login
-   ```
+Legacy env names (`DB`, `PASSWORD`, `PORT`) are still accepted for backward compatibility.
 
-3. Create the remote D1 SQL database:
-   ```bash
-   npx wrangler d1 create scout-monitor-db
-   ```
-   *(Copy the returned `database_id` and ensure it matches `database_id` inside `cloud-monitor/wrangler.toml`)*.
+## Documentation
 
-4. Initialize the database schema:
-   ```bash
-   npm run d1:init-remote
-   ```
+- API contract (OpenAPI): [`docs/openapi.yaml`](./docs/openapi.yaml)
+- Fever API compatibility: [`docs/fever-api.md`](./docs/fever-api.md)
+- Backend design: [`docs/backend-design.md`](./docs/backend-design.md)
+- Frontend design: [`docs/frontend-design.md`](./docs/frontend-design.md)
+- Legacy schema reference (kept for migration work): [`docs/old-database-schema.md`](./docs/old-database-schema.md)
 
-5. Set a secure secret key (used by your Mac app to securely sync):
-   ```bash
-   npx wrangler secret put SYNC_SECRET_KEY
-   # Enter any strong passphrase or random token (e.g. my-super-secret-token-123)
-   ```
+## Development
 
-6. Deploy the worker:
-   ```bash
-   npm run deploy
-   ```
-   Cloudflare will output your public worker URL, for example:  
-   `https://scout-cloud-monitor.<your-subdomain>.workers.dev`
+- Requirements: Go `1.25+`, Node.js `24+`, pnpm
+- Helpful commands are in [`scripts.sh`](./scripts.sh)
+- Frontend i18n key check: `cd frontend && npm run check:i18n`
 
-#### Step C: Connect Scout on Your Mac
-Open your `.env` file (in the project root or in your app's configuration):
+Example:
 
-```env
-# Enable Cloudflare Edge Sync
-CLOUD_MONITOR_ENABLED=true
-CLOUD_MONITOR_URL=https://scout-cloud-monitor.<your-subdomain>.workers.dev
-CLOUD_MONITOR_SECRET=my-super-secret-token-123
+```shell
+./scripts.sh build
 ```
 
-Restart Scout. Your Mac desktop client is now connected to your edge worker! Any webpage monitor you create in Scout will automatically synchronize to the edge worker for non-stop checks.
+## Contributing
 
----
+Contributions are welcome. Please read [Contributing Guidelines](./CONTRIBUTING.md) before opening a PR.
 
-## 🏗️ Architecture
+## Credits
 
-```mermaid
-graph TD
-    A["Native macOS Swift Shell (WKWebView)"] -->|IPC Bridge: saveDownload, printHtml| B["React + Vite Frontend (:8080)"]
-    B -->|REST API / TanStack Query| C["Embedded Go Backend Server"]
-    C -->|WAL Persistence| D[("Local SQLite DB")]
-    C -->|Background Scheduler| E["External RSS & Web Sources"]
-    C -.->|Bearer Token Sync| F["Cloudflare Worker (24/7 Edge Scraper)"]
-    F -->|Autonomous Polling| E
-    F -->|Change Logs & Snapshots| G[("Cloudflare D1 Database")]
-```
-
-- **Frontend**: React 18, TypeScript, Tailwind CSS, TanStack Query, TanStack Router, Lucide Icons.
-- **Backend**: Go (Fiber framework), SQLite (modernc pure Go driver, WAL mode).
-- **Desktop Shell**: Swift `WKWebView` application with custom message handlers for native macOS features (downloads, native PDF printing, and external URL dispatch).
-- **Cloud Diff Worker**: Cloudflare Worker + D1 serverless edge runner for continuous 24/7 change detection on always-off machines.
-
-For in-depth documentation, review the [App Architecture & Developer Guide](./ARCHITECTURE_AND_DEV_GUIDE.md).
-
----
-
-## ⚙️ Configuration
-
-Copy `.env.example` to `.env` to customize settings:
-
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `FUSION_PORT` | `8080` | Local HTTP server port |
-| `FUSION_PULL_INTERVAL` | `1800` | Background feed refresh interval (seconds) |
-| `GEMINI_API_KEY` | *(empty)* | Optional: Google Gemini API key for auto-translation |
-| `CLOUD_MONITOR_ENABLED`| `false` | Enable 24/7 Cloudflare edge monitoring |
-| `CLOUD_MONITOR_URL`    | *(empty)* | URL of your deployed Cloudflare worker |
-| `CLOUD_MONITOR_SECRET` | *(empty)* | Secret authorization token matching your worker |
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests.
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for details on code standards and development workflows.
-
----
-
-## 📄 License
-
-Scout is licensed under the [MIT License](./LICENSE). Free to use, modify, and distribute.
+- Feed parsing powered by [gofeed](https://github.com/mmcdole/gofeed)
