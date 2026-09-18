@@ -45,6 +45,7 @@ export function ShortcutsDialog() {
         { keys: "x", action: "Toggle select article" },
         { keys: "Shift+X", action: "Select all visible" },
         { keys: "o / v", action: t("shortcuts.action.openOriginal") },
+        { keys: "Opt+Scroll / Ctrl+Scroll", action: "Zoom cards in / out" },
       ],
     },
     {

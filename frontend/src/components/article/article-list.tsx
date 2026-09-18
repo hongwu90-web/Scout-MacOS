@@ -1,6 +1,6 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, LayoutGrid, List, CheckSquare } from "lucide-react";
+import { Loader2, LayoutGrid, List, CheckSquare, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -91,7 +91,14 @@ export function ArticleList() {
     [createBookmark, deleteBookmark, getBookmarkByItemId, isItemStarred],
   );
 
-  const { articleViewMode, setArticleViewMode } = usePreferencesStore();
+  const {
+    articleViewMode,
+    setArticleViewMode,
+    articleCardZoom,
+    increaseArticleCardZoom,
+    decreaseArticleCardZoom,
+    resetArticleCardZoom,
+  } = usePreferencesStore();
   const {
     isSelectionMode,
     selectedIds,
@@ -99,6 +106,35 @@ export function ArticleList() {
     toggleItem,
     selectRange,
   } = useSelectionStore();
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const wheelAccumulatorRef = useRef(0);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Option + Wheel (macOS) or Ctrl + Wheel (Windows/Linux or trackpad pinch)
+      if (e.altKey || e.ctrlKey) {
+        e.preventDefault();
+        wheelAccumulatorRef.current += e.deltaY;
+        const THRESHOLD = 35;
+        if (wheelAccumulatorRef.current <= -THRESHOLD) {
+          usePreferencesStore.getState().increaseArticleCardZoom();
+          wheelAccumulatorRef.current = 0;
+        } else if (wheelAccumulatorRef.current >= THRESHOLD) {
+          usePreferencesStore.getState().decreaseArticleCardZoom();
+          wheelAccumulatorRef.current = 0;
+        }
+      }
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
 
   const validArticles = articles.filter((a): a is Item => Boolean(a && a.id));
   const orderedIds = validArticles.map((a) => a.id);
@@ -123,7 +159,7 @@ export function ArticleList() {
             <div />
           )}
 
-          {/* View mode toggle (Cards vs Compact Headlines) & Selection Mode */}
+          {/* View mode toggle (Cards vs Compact Headlines) & Zoom & Selection Mode */}
           <div className="flex items-center border border-border rounded-xs bg-muted/40 p-0.5 font-mono text-[10px]">
             <button
               type="button"
@@ -154,6 +190,36 @@ export function ArticleList() {
               <span className="hidden sm:inline">COMPACT</span>
             </button>
             <div className="h-3 w-[1px] bg-border mx-0.5" />
+            {/* Card Zoom Controls */}
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={decreaseArticleCardZoom}
+                disabled={articleCardZoom <= 70}
+                className="px-1 py-1 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-xs"
+                title="Zoom Out (Option + Scroll Down)"
+              >
+                <ZoomOut className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={resetArticleCardZoom}
+                className="px-1 py-1 text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors tabular-nums min-w-[34px] text-center rounded-xs"
+                title="Reset Zoom to 100%"
+              >
+                {articleCardZoom}%
+              </button>
+              <button
+                type="button"
+                onClick={increaseArticleCardZoom}
+                disabled={articleCardZoom >= 140}
+                className="px-1 py-1 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-xs"
+                title="Zoom In (Option + Scroll Up)"
+              >
+                <ZoomIn className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="h-3 w-[1px] bg-border mx-0.5" />
             <button
               type="button"
               onClick={toggleSelectionMode}
@@ -178,9 +244,10 @@ export function ArticleList() {
           isItemStarred={isItemStarred}
         />
 
-        {/* Article list / Card grid */}
-        <ScrollArea className="min-h-0 flex-1">
-          <div>
+        {/* Article list / Card grid with adjustable zoom */}
+        <div ref={scrollContainerRef} className="min-h-0 flex-1 flex flex-col">
+          <ScrollArea className="min-h-0 flex-1">
+            <div style={{ zoom: `${articleCardZoom}%` }} className="origin-top-left">
             {isLoading && articles.length === 0 ? (
               <div
                 className={cn(
@@ -319,6 +386,7 @@ export function ArticleList() {
             )}
           </div>
         </ScrollArea>
+        </div>
       </div>
     </div>
   );

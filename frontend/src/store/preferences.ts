@@ -59,13 +59,28 @@ function normalizeArticlePageSize(size: number): ArticlePageSize {
 
 export type ArticleViewMode = "cards" | "compact";
 
+export const MIN_ARTICLE_CARD_ZOOM = 70;
+export const MAX_ARTICLE_CARD_ZOOM = 140;
+export const DEFAULT_ARTICLE_CARD_ZOOM = 100;
+export const ARTICLE_CARD_ZOOM_STEP = 10;
+
+function normalizeArticleCardZoom(zoom: number): number {
+  if (typeof zoom !== "number" || isNaN(zoom)) return DEFAULT_ARTICLE_CARD_ZOOM;
+  return Math.min(MAX_ARTICLE_CARD_ZOOM, Math.max(MIN_ARTICLE_CARD_ZOOM, Math.round(zoom / 5) * 5));
+}
+
 export interface PreferencesState {
   locale: AppLocale;
   articlePageSize: ArticlePageSize;
   articleViewMode: ArticleViewMode;
+  articleCardZoom: number;
   setLocale: (locale: string) => void;
   setArticlePageSize: (size: number) => void;
   setArticleViewMode: (mode: ArticleViewMode) => void;
+  setArticleCardZoom: (zoom: number) => void;
+  increaseArticleCardZoom: () => void;
+  decreaseArticleCardZoom: () => void;
+  resetArticleCardZoom: () => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -74,10 +89,27 @@ export const usePreferencesStore = create<PreferencesState>()(
       locale: defaultLocale,
       articlePageSize: defaultArticlePageSize,
       articleViewMode: "cards",
+      articleCardZoom: DEFAULT_ARTICLE_CARD_ZOOM,
       setLocale: (locale) => set({ locale: normalizeLocale(locale) }),
       setArticlePageSize: (size) =>
         set({ articlePageSize: normalizeArticlePageSize(size) }),
       setArticleViewMode: (mode) => set({ articleViewMode: mode === "compact" ? "compact" : "cards" }),
+      setArticleCardZoom: (zoom) => set({ articleCardZoom: normalizeArticleCardZoom(zoom) }),
+      increaseArticleCardZoom: () =>
+        set((state) => ({
+          articleCardZoom: Math.min(
+            MAX_ARTICLE_CARD_ZOOM,
+            state.articleCardZoom + ARTICLE_CARD_ZOOM_STEP,
+          ),
+        })),
+      decreaseArticleCardZoom: () =>
+        set((state) => ({
+          articleCardZoom: Math.max(
+            MIN_ARTICLE_CARD_ZOOM,
+            state.articleCardZoom - ARTICLE_CARD_ZOOM_STEP,
+          ),
+        })),
+      resetArticleCardZoom: () => set({ articleCardZoom: DEFAULT_ARTICLE_CARD_ZOOM }),
     }),
     {
       name: "fusion-preferences",
@@ -86,6 +118,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         locale: state.locale,
         articlePageSize: state.articlePageSize,
         articleViewMode: state.articleViewMode,
+        articleCardZoom: state.articleCardZoom,
       }),
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<PreferencesState> | undefined;
@@ -97,6 +130,9 @@ export const usePreferencesStore = create<PreferencesState>()(
             persisted?.articlePageSize ?? currentState.articlePageSize,
           ),
           articleViewMode: persisted?.articleViewMode === "compact" ? "compact" : "cards",
+          articleCardZoom: normalizeArticleCardZoom(
+            persisted?.articleCardZoom ?? currentState.articleCardZoom,
+          ),
         };
       },
     },
