@@ -8,7 +8,7 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { itemAPI, focusFeedAPI, type Feed, type Item, type ListItemsParams } from "@/lib/api";
+import { itemAPI, focusFeedAPI, type Feed, type FocusFeed, type Item, type ListItemsParams } from "@/lib/api";
 import {
   normalizeItemFilters,
   queryKeys,
@@ -24,6 +24,7 @@ type ItemsMutationContext = {
   prevItemLists: Array<[readonly unknown[], ItemsInfiniteData | undefined]>;
   prevItemDetails: Array<readonly [number, Item | undefined]>;
   prevFeeds: Feed[] | undefined;
+  prevFocusFeeds: FocusFeed[] | undefined;
   prevBookmarkLists: Array<
     [readonly unknown[], BookmarksInfiniteData | undefined]
   >;
@@ -105,6 +106,7 @@ function snapshotItemsMutationState(
         [id, qc.getQueryData<Item>(queryKeys.items.detail(id))] as const,
     ),
     prevFeeds: qc.getQueryData<Feed[]>(queryKeys.feeds.list()),
+    prevFocusFeeds: qc.getQueryData<FocusFeed[]>(queryKeys.focusFeeds.list()),
     prevBookmarkLists: qc.getQueriesData<BookmarksInfiniteData>({
       queryKey: queryKeys.bookmarks.lists(),
     }),
@@ -188,6 +190,41 @@ function applyOptimisticItemReadState(
     );
   }
 
+  const focusFeeds = qc.getQueryData<FocusFeed[]>(queryKeys.focusFeeds.list());
+  if (focusFeeds && focusFeeds.length > 0 && updatedItemsById.size > 0) {
+    qc.setQueryData(queryKeys.focusFeeds.list(), (old: FocusFeed[] | undefined) =>
+      old?.map((ff) => {
+        const kws = ff.keywords
+          .split(/[,;\n]/)
+          .map((k) => k.trim().toLowerCase())
+          .filter(Boolean);
+        const scopedFeedIds = ff.feed_ids
+          ? ff.feed_ids.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0)
+          : [];
+        let delta = 0;
+
+        for (const item of updatedItemsById.values()) {
+          if (scopedFeedIds.length > 0 && !scopedFeedIds.includes(item.feed_id)) {
+            continue;
+          }
+          const title = (item.title || "").toLowerCase();
+          const transTitle = (item.translated_title || "").toLowerCase();
+          const content = (item.content || "").toLowerCase();
+          const matches = kws.some((kw) => title.includes(kw) || transTitle.includes(kw) || content.includes(kw));
+          if (matches) {
+            delta += targetUnread ? 1 : -1;
+          }
+        }
+
+        if (delta === 0) return ff;
+        return {
+          ...ff,
+          unread_count: Math.max(0, ff.unread_count + delta),
+        };
+      }),
+    );
+  }
+
   // Mirror the read-state change into bookmark caches so the starred view (which
   // renders bookmarks as articles) reflects the toggle without a refetch.
   qc.setQueriesData<BookmarksInfiniteData>(
@@ -233,6 +270,10 @@ function rollbackItemsMutation(
 
   if (context.prevFeeds) {
     qc.setQueryData(queryKeys.feeds.list(), context.prevFeeds);
+  }
+
+  if (context.prevFocusFeeds) {
+    qc.setQueryData(queryKeys.focusFeeds.list(), context.prevFocusFeeds);
   }
 
   for (const [key, data] of context.prevBookmarkLists) {
@@ -292,7 +333,7 @@ export function useMarkItemsReadByDate() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: { feed_id?: number; group_id?: number; before_date?: number }) => {
+    mutationFn: async (data: { feed_id?: number; group_id?: number; focus_feed_id?: number; before_date?: number }) => {
       await itemAPI.markReadByDate(data);
     },
     onSuccess: async () => {
@@ -314,7 +355,7 @@ export function usePurgeReadItems() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: { feed_id?: number; group_id?: number }) => {
+    mutationFn: async (data: { feed_id?: number; group_id?: number; focus_feed_id?: number }) => {
       await itemAPI.purgeRead(data);
     },
     onSuccess: async () => {

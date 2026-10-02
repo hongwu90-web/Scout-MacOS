@@ -598,7 +598,7 @@ func TestMarkItemsReadByDate(t *testing.T) {
 
 	// Mark older than 250 in feed1 (should mark item1 and item2 as read)
 	cutoff := int64(250)
-	if err := store.MarkItemsReadByDate(1, &feed1.ID, nil, &cutoff); err != nil {
+	if err := store.MarkItemsReadByDate(1, &feed1.ID, nil, nil, &cutoff); err != nil {
 		t.Fatalf("MarkItemsReadByDate failed: %v", err)
 	}
 
@@ -612,6 +612,78 @@ func TestMarkItemsReadByDate(t *testing.T) {
 	}
 	if unreadItems[0].GUID != "guid-3" {
 		t.Fatalf("expected unread item to be guid-3, got %s", unreadItems[0].GUID)
+	}
+}
+
+func TestMarkItemsReadByDate_FocusFeed(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	group := mustCreateGroup(t, store, "Tech Group")
+	feed1 := mustCreateFeed(t, store, group.ID, "AI News", "https://example.com/ai", "https://example.com", "")
+	feed2 := mustCreateFeed(t, store, group.ID, "General News", "https://example.com/gen", "https://example.com", "")
+
+	// Feed 1 items
+	itemA := mustCreateItem(t, store, feed1.ID, "guid-a", "OpenAI launches new model", "https://example.com/a", "Content A", 100)
+	itemB := mustCreateItem(t, store, feed1.ID, "guid-b", "Local bakery recipe", "https://example.com/b", "Content B", 200)
+
+	// Feed 2 items
+	itemC := mustCreateItem(t, store, feed2.ID, "guid-c", "Anthropic Claude update", "https://example.com/c", "Content C", 150)
+	itemD := mustCreateItem(t, store, feed2.ID, "guid-d", "Football match recap", "https://example.com/d", "Content D", 250)
+
+	// Create Focus Feed targeting "OpenAI, Claude"
+	ff, err := store.CreateFocusFeed(1, group.ID, "AI Focus", "OpenAI, Claude", "", "target")
+	if err != nil {
+		t.Fatalf("CreateFocusFeed failed: %v", err)
+	}
+
+	if ff.UnreadCount != 2 {
+		t.Fatalf("expected 2 unread items in focus feed, got %d", ff.UnreadCount)
+	}
+
+	// Mark all items in focus feed as read
+	if err := store.MarkItemsReadByDate(1, nil, nil, &ff.ID, nil); err != nil {
+		t.Fatalf("MarkItemsReadByDate with focus feed failed: %v", err)
+	}
+
+	// Verify matching items are read
+	itemAGet, err := store.GetItem(1, itemA.ID)
+	if err != nil || itemAGet.Unread {
+		t.Fatalf("expected itemA to be read (unread=false), got unread=%v, err=%v", itemAGet.Unread, err)
+	}
+	itemCGet, err := store.GetItem(1, itemC.ID)
+	if err != nil || itemCGet.Unread {
+		t.Fatalf("expected itemC to be read (unread=false), got unread=%v, err=%v", itemCGet.Unread, err)
+	}
+
+	// Verify non-matching items in their respective feeds REMAIN UNREAD
+	itemBGet, err := store.GetItem(1, itemB.ID)
+	if err != nil || !itemBGet.Unread {
+		t.Fatalf("expected itemB in feed1 to remain unread (unread=true), got unread=%v, err=%v", itemBGet.Unread, err)
+	}
+	itemDGet, err := store.GetItem(1, itemD.ID)
+	if err != nil || !itemDGet.Unread {
+		t.Fatalf("expected itemD in feed2 to remain unread (unread=true), got unread=%v, err=%v", itemDGet.Unread, err)
+	}
+
+	// Verify feed unread counts via ListFeeds (which aggregates unread counts)
+	feeds, err := store.ListFeeds(1)
+	if err != nil {
+		t.Fatalf("ListFeeds failed: %v", err)
+	}
+	for _, f := range feeds {
+		if f.ID == feed1.ID && f.UnreadCount != 1 {
+			t.Fatalf("expected feed1 unread count to be 1, got %d", f.UnreadCount)
+		}
+		if f.ID == feed2.ID && f.UnreadCount != 1 {
+			t.Fatalf("expected feed2 unread count to be 1, got %d", f.UnreadCount)
+		}
+	}
+
+	// Verify focus feed unread count is 0
+	ffGet, err := store.GetFocusFeed(1, ff.ID)
+	if err != nil || ffGet.UnreadCount != 0 {
+		t.Fatalf("expected focus feed unread count to be 0, got %d", ffGet.UnreadCount)
 	}
 }
 
@@ -632,7 +704,7 @@ func TestDeleteReadItems_PreventsReingestion(t *testing.T) {
 	}
 
 	// Purge read items
-	affected, purged, err := store.DeleteReadItems(1, &feed.ID, nil)
+	affected, purged, err := store.DeleteReadItems(1, &feed.ID, nil, nil)
 	if err != nil {
 		t.Fatalf("DeleteReadItems failed: %v", err)
 	}

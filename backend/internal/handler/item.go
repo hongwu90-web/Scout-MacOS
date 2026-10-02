@@ -177,6 +177,7 @@ func (h *Handler) markItemsUnread(c *gin.Context) {
 type markItemsReadByDateRequest struct {
 	FeedID        *int64 `json:"feed_id"`
 	GroupID       *int64 `json:"group_id"`
+	FocusFeedID   *int64 `json:"focus_feed_id"`
 	BeforePubDate *int64 `json:"before_date"`
 }
 
@@ -188,7 +189,7 @@ func (h *Handler) markItemsReadByDate(c *gin.Context) {
 		return
 	}
 
-	if err := h.store.MarkItemsReadByDate(userID, req.FeedID, req.GroupID, req.BeforePubDate); err != nil {
+	if err := h.store.MarkItemsReadByDate(userID, req.FeedID, req.GroupID, req.FocusFeedID, req.BeforePubDate); err != nil {
 		internalError(c, err, "mark items read by date")
 		return
 	}
@@ -197,8 +198,9 @@ func (h *Handler) markItemsReadByDate(c *gin.Context) {
 }
 
 type purgeReadItemsRequest struct {
-	FeedID  *int64 `json:"feed_id"`
-	GroupID *int64 `json:"group_id"`
+	FeedID      *int64 `json:"feed_id"`
+	GroupID     *int64 `json:"group_id"`
+	FocusFeedID *int64 `json:"focus_feed_id"`
 }
 
 func (h *Handler) purgeReadItems(c *gin.Context) {
@@ -211,7 +213,7 @@ func (h *Handler) purgeReadItems(c *gin.Context) {
 		}
 	}
 
-	_, purgedItems, err := h.store.DeleteReadItems(userID, req.FeedID, req.GroupID)
+	_, purgedItems, err := h.store.DeleteReadItems(userID, req.FeedID, req.GroupID, req.FocusFeedID)
 	if err != nil {
 		internalError(c, err, "purge read items")
 		return

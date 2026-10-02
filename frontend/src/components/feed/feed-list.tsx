@@ -10,7 +10,7 @@ import {
   useDeleteFeed,
   useRefreshFeeds,
 } from "@/queries/feeds";
-import { useFocusFeeds } from "@/queries/focus_feeds";
+import { useFocusFeeds, useDeleteFocusFeed } from "@/queries/focus_feeds";
 import { useMarkItemsReadByDate } from "@/queries/items";
 import { useBookmarkLookup } from "@/queries/bookmarks";
 import { useUrlState } from "@/hooks/use-url-state";
@@ -31,6 +31,7 @@ export function FeedList() {
   const { total: starredTotal } = useBookmarkLookup();
   const updateFeed = useUpdateFeed();
   const deleteFeed = useDeleteFeed();
+  const deleteFocusFeed = useDeleteFocusFeed();
   const refreshFeeds = useRefreshFeeds();
   const markReadByDate = useMarkItemsReadByDate();
   const deleteGroup = useDeleteGroup();
@@ -54,10 +55,11 @@ export function FeedList() {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    type: "feed" | "group";
+    type: "feed" | "group" | "focus_feed";
     feed?: Feed;
     groupId?: number;
     name?: string;
+    focusFeed?: FocusFeed;
   } | null>(null);
 
   // Close context menu on outside click or scroll
@@ -152,6 +154,19 @@ export function FeedList() {
     });
   };
 
+  const handleFocusFeedContextMenu = (
+    e: React.MouseEvent,
+    focusFeed: FocusFeed,
+  ) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      type: "focus_feed",
+      focusFeed,
+    });
+  };
+
   return (
     <>
       <ScrollArea className="min-h-0 flex-1 w-full min-w-0 overflow-hidden [&_[data-slot=scroll-area-viewport]>div]:!block">
@@ -209,6 +224,7 @@ export function FeedList() {
                       : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
                   )}
                   onClick={() => setSelectedFocusFeed(ff.id)}
+                  onContextMenu={(e) => handleFocusFeedContextMenu(e, ff)}
                 >
                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
                     <Crosshair className="h-3.5 w-3.5 text-primary shrink-0" />
@@ -408,6 +424,47 @@ export function FeedList() {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete Group
+                </button>
+              </>
+            )}
+
+            {contextMenu.type === "focus_feed" && contextMenu.focusFeed && (
+              <>
+                <div className="px-3 py-1 font-bold text-[10px] text-muted-foreground uppercase border-b border-border truncate max-w-[180px]">
+                  {contextMenu.focusFeed.name}
+                </div>
+                <button
+                  onClick={() => {
+                    markReadByDate.mutate({ focus_feed_id: contextMenu.focusFeed!.id });
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-accent flex items-center gap-2"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  Mark All as Read
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingFocusFeed(contextMenu.focusFeed!);
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-accent flex items-center gap-2"
+                >
+                  <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
+                  Edit Focus Feed
+                </button>
+                <div className="my-1 border-t border-border" />
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete focus feed "${contextMenu.focusFeed?.name}"?`)) {
+                      deleteFocusFeed.mutate(contextMenu.focusFeed!.id);
+                    }
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-destructive/10 text-destructive flex items-center gap-2"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete Focus Feed
                 </button>
               </>
             )}

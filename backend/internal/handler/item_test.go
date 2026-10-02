@@ -148,3 +148,50 @@ func TestListItemsCursorWithOrderByCreatedAt(t *testing.T) {
 		t.Fatalf("expected status 400 for before cursor with order_by=created_at, got %d", w.Code)
 	}
 }
+
+func TestMarkItemsReadByDate_WithFocusFeed(t *testing.T) {
+	h, st := newFeverTestHandler(t)
+
+	group, err := st.CreateGroup(1, "Test Group")
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	feed, err := st.CreateFeed(1, group.ID, "Feed", "https://example.com/feed", "https://example.com", "")
+	if err != nil {
+		t.Fatalf("CreateFeed: %v", err)
+	}
+	item1, err := st.CreateItem(1, feed.ID, "guid-1", "Tech AI news", "https://example.com/1", "Content 1", 100)
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+	item2, err := st.CreateItem(1, feed.ID, "guid-2", "Sports news", "https://example.com/2", "Content 2", 200)
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	ff, err := st.CreateFocusFeed(1, group.ID, "AI Focus", "Tech", "", "target")
+	if err != nil {
+		t.Fatalf("CreateFocusFeed: %v", err)
+	}
+
+	r := newTestRouter()
+	r.POST("/api/items/mark-read-by-date", h.markItemsReadByDate)
+
+	w := performRequest(r, http.MethodPost, "/api/items/mark-read-by-date", mustJSONBody(t, gin.H{
+		"focus_feed_id": ff.ID,
+	}), map[string]string{"Content-Type": "application/json"})
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d (body=%s)", w.Code, w.Body.String())
+	}
+
+	// Verify item1 is read, item2 is unread
+	item1Get, err := st.GetItem(1, item1.ID)
+	if err != nil || item1Get.Unread {
+		t.Fatalf("expected item1 to be read, got unread=%v", item1Get.Unread)
+	}
+	item2Get, err := st.GetItem(1, item2.ID)
+	if err != nil || !item2Get.Unread {
+		t.Fatalf("expected item2 to remain unread, got unread=%v", item2Get.Unread)
+	}
+}

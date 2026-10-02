@@ -222,12 +222,11 @@ export function ArticlePage() {
       }
 
       if (selectedFocusFeed) {
-        // Mark all matching focus feed items as read
-        const itemIds = articles.filter((a) => a.unread).map((a) => a.id);
-        if (itemIds.length > 0) {
-          await markRead.mutateAsync(itemIds);
-        }
-        toast.success(`Marked articles in "${selectedFocusFeed.name}" as read`);
+        // Mark all matching focus feed items in the database as read
+        await markItemsReadByDate.mutateAsync({
+          focus_feed_id: selectedFocusFeed.id,
+        });
+        toast.success(`Marked all articles in "${selectedFocusFeed.name}" as read`);
         return;
       }
 
@@ -254,6 +253,7 @@ export function ArticlePage() {
       await markItemsReadByDate.mutateAsync({
         feed_id: selectedFeedId ?? undefined,
         group_id: selectedGroupId ?? undefined,
+        focus_feed_id: selectedFocusFeedId ?? undefined,
         before_date: beforeDate,
       });
       toast.success(`Marked articles older than ${days} ${days === 1 ? "day" : "days"} as read`);
@@ -271,6 +271,7 @@ export function ArticlePage() {
       await markItemsReadByDate.mutateAsync({
         feed_id: selectedFeedId ?? undefined,
         group_id: selectedGroupId ?? undefined,
+        focus_feed_id: selectedFocusFeedId ?? undefined,
         before_date: beforeDate,
       });
       toast.success(`Marked articles before ${customDate} as read`);
@@ -286,9 +287,12 @@ export function ArticlePage() {
       await purgeReadItems.mutateAsync({
         feed_id: selectedFeedId ?? undefined,
         group_id: selectedGroupId ?? undefined,
+        focus_feed_id: selectedFocusFeedId ?? undefined,
       });
       toast.success(
-        selectedFeed
+        selectedFocusFeed
+          ? `Read articles purged for "${selectedFocusFeed.name}"`
+          : selectedFeed
           ? `Read articles purged for ${selectedFeed.name}`
           : selectedGroup
           ? `Read articles purged for ${selectedGroup.name}`

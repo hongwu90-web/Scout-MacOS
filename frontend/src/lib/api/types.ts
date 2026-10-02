@@ -198,12 +198,14 @@ export interface MarkItemsReadRequest {
 export interface MarkItemsReadByDateRequest {
   feed_id?: number;
   group_id?: number;
+  focus_feed_id?: number;
   before_date?: number;
 }
 
 export interface PurgeReadItemsRequest {
   feed_id?: number;
   group_id?: number;
+  focus_feed_id?: number;
 }
 
 export interface FocusFeed {

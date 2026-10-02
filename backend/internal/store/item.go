@@ -578,10 +578,32 @@ func (s *Store) CountItems(userID int64, params ListItemsParams) (int, error) {
 	return count, err
 }
 
-// MarkItemsReadByDate marks items as read based on feed/group and publication date.
-func (s *Store) MarkItemsReadByDate(userID int64, feedID, groupID *int64, beforePubDate *int64) error {
+// MarkItemsReadByDate marks items as read based on feed/group/focus_feed and publication date.
+func (s *Store) MarkItemsReadByDate(userID int64, feedID, groupID, focusFeedID *int64, beforePubDate *int64) error {
 	query := `UPDATE items SET unread = 0 WHERE unread = 1 AND user_id = :user_id`
 	args := []any{sql.Named("user_id", userID)}
+
+	if focusFeedID != nil {
+		ff, err := s.GetFocusFeed(userID, *focusFeedID)
+		if err != nil {
+			return err
+		}
+		keywords := parseKeywords(ff.Keywords)
+		kwClause, kwArgs := buildFocusFeedKeywordClause(keywords)
+		query += kwClause
+		args = append(args, kwArgs...)
+
+		feedIDs := parseFeedIDs(ff.FeedIDs)
+		if len(feedIDs) > 0 {
+			var placeholders []string
+			for idx, fid := range feedIDs {
+				name := fmt.Sprintf("ff_feed_%d", idx)
+				placeholders = append(placeholders, ":"+name)
+				args = append(args, sql.Named(name, fid))
+			}
+			query += fmt.Sprintf(" AND items.feed_id IN (%s)", strings.Join(placeholders, ","))
+		}
+	}
 
 	if groupID != nil {
 		query += ` AND feed_id IN (SELECT id FROM feeds WHERE group_id = :group_id AND user_id = :user_id)`
@@ -607,9 +629,9 @@ type PurgedItemRecord struct {
 	GUID   string `json:"guid"`
 }
 
-// DeleteReadItems deletes all read items matching the given feed or group criteria
+// DeleteReadItems deletes all read items matching the given feed, group, or focus feed criteria
 // and records tombstones in purged_items so they are never re-ingested.
-func (s *Store) DeleteReadItems(userID int64, feedID, groupID *int64) (int64, []PurgedItemRecord, error) {
+func (s *Store) DeleteReadItems(userID int64, feedID, groupID, focusFeedID *int64) (int64, []PurgedItemRecord, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
@@ -621,6 +643,36 @@ func (s *Store) DeleteReadItems(userID int64, feedID, groupID *int64) (int64, []
 
 	whereClause := "WHERE i.unread = 0 AND i.user_id = :user_id AND i.id NOT IN (SELECT item_id FROM bookmarks WHERE item_id IS NOT NULL AND user_id = :user_id)"
 	args := []any{sql.Named("user_id", userID)}
+
+	if focusFeedID != nil {
+		ff, err := s.GetFocusFeed(userID, *focusFeedID)
+		if err != nil {
+			return 0, nil, err
+		}
+		keywords := parseKeywords(ff.Keywords)
+		if len(keywords) > 0 {
+			var clauses []string
+			for idx, kw := range keywords {
+				paramName := fmt.Sprintf("ff_purge_kw_%d", idx)
+				clauses = append(clauses, fmt.Sprintf(
+					"(i.title LIKE :%s OR i.translated_title LIKE :%s OR i.content LIKE :%s)",
+					paramName, paramName, paramName,
+				))
+				args = append(args, sql.Named(paramName, "%"+kw+"%"))
+			}
+			whereClause += " AND (" + strings.Join(clauses, " OR ") + ")"
+		}
+		feedIDs := parseFeedIDs(ff.FeedIDs)
+		if len(feedIDs) > 0 {
+			var placeholders []string
+			for idx, fid := range feedIDs {
+				name := fmt.Sprintf("ff_purge_feed_%d", idx)
+				placeholders = append(placeholders, ":"+name)
+				args = append(args, sql.Named(name, fid))
+			}
+			whereClause += fmt.Sprintf(" AND i.feed_id IN (%s)", strings.Join(placeholders, ","))
+		}
+	}
 
 	if groupID != nil {
 		whereClause += " AND i.feed_id IN (SELECT id FROM feeds WHERE group_id = :group_id AND user_id = :user_id)"
