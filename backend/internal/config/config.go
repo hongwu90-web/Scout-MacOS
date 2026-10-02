@@ -44,6 +44,9 @@ type Config struct {
 	CloudMonitorEnabled bool   // Enable sync with Cloudflare worker
 	CloudMonitorURL     string // URL of Cloudflare worker
 	CloudMonitorSecret  string // Secret key for Cloudflare worker sync
+
+	// Standalone desktop mode (Scout macOS standalone app)
+	StandaloneDesktop bool
 }
 
 func Load() (*Config, error) {
@@ -173,6 +176,7 @@ func Load() (*Config, error) {
 		CloudMonitorEnabled: getEnvString("CLOUD_MONITOR_ENABLED", "false") == "true",
 		CloudMonitorURL:     strings.TrimRight(getEnvString("CLOUD_MONITOR_URL", ""), "/"),
 		CloudMonitorSecret:  getEnvString("CLOUD_MONITOR_SECRET", ""),
+		StandaloneDesktop:   getEnvString("SCOUT_STANDALONE_DESKTOP", "false") == "true",
 	}, nil
 }
 

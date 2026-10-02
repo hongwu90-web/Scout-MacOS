@@ -283,6 +283,11 @@ func (h *Handler) isCredentialsAllowed(origin string) bool {
 		return true
 	}
 
+	// If no CORS origins configured, allow credentials for any origin permitted by isOriginAllowed
+	if h.config == nil || len(h.config.CORSAllowedOrigins) == 0 {
+		return true
+	}
+
 	// Only allow credentials if origin was explicitly enumerated in CORSAllowedOrigins
 	if h.config != nil && len(h.config.CORSAllowedOrigins) > 0 {
 		normalizedOrigin := normalizeOrigin(origin)
@@ -334,7 +339,27 @@ func normalizeOrigin(origin string) string {
 
 func (h *Handler) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("userID", int64(1))
+		if (h.config != nil && h.config.StandaloneDesktop) || h.allowAnonAPI {
+			c.Set("userID", int64(1))
+			c.Next()
+			return
+		}
+
+		sessionID, err := c.Cookie("session")
+		if err != nil {
+			unauthorizedError(c)
+			c.Abort()
+			return
+		}
+
+		userID, ok := h.isSessionValid(sessionID)
+		if !ok {
+			unauthorizedError(c)
+			c.Abort()
+			return
+		}
+
+		c.Set("userID", userID)
 		c.Next()
 	}
 }

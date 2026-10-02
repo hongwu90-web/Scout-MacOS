@@ -75,26 +75,61 @@ func TestLogin(t *testing.T) {
 }
 
 func TestAuthMiddleware(t *testing.T) {
-	h := &Handler{}
-	r := newTestRouter()
-	r.Use(h.authMiddleware())
-	var capturedUserID any
-	r.GET("/api/protected", func(c *gin.Context) {
-		capturedUserID, _ = c.Get("userID")
-		c.Status(http.StatusOK)
+	t.Run("bypasses when allowAnonAPI is true", func(t *testing.T) {
+		h := &Handler{allowAnonAPI: true}
+		r := newTestRouter()
+		r.Use(h.authMiddleware())
+		var capturedUserID any
+		r.GET("/api/protected", func(c *gin.Context) {
+			capturedUserID, _ = c.Get("userID")
+			c.Status(http.StatusOK)
+		})
+		w := performRequest(r, http.MethodGet, "/api/protected", nil, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", w.Code)
+		}
+		if capturedUserID != int64(1) {
+			t.Fatalf("expected userID 1, got %v", capturedUserID)
+		}
 	})
-	w := performRequest(
-		r,
-		http.MethodGet,
-		"/api/protected",
-		nil,
-		nil,
-	)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", w.Code)
-	}
-	if capturedUserID != int64(1) {
-		t.Fatalf("expected userID 1, got %v", capturedUserID)
-	}
+	t.Run("returns 401 when unauthenticated", func(t *testing.T) {
+		h := &Handler{sessions: make(map[string]SessionData)}
+		r := newTestRouter()
+		r.Use(h.authMiddleware())
+		r.GET("/api/protected", func(c *gin.Context) {
+			c.Status(http.StatusOK)
+		})
+		w := performRequest(r, http.MethodGet, "/api/protected", nil, nil)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status 401, got %d", w.Code)
+		}
+	})
+
+	t.Run("authenticates with valid session cookie", func(t *testing.T) {
+		h := &Handler{
+			sessions: map[string]SessionData{
+				"valid-session-id": {
+					UserID:    42,
+					ExpiresAt: 9999999999,
+				},
+			},
+		}
+		r := newTestRouter()
+		r.Use(h.authMiddleware())
+		var capturedUserID any
+		r.GET("/api/protected", func(c *gin.Context) {
+			capturedUserID, _ = c.Get("userID")
+			c.Status(http.StatusOK)
+		})
+		w := performRequest(r, http.MethodGet, "/api/protected", nil, map[string]string{
+			"Cookie": "session=valid-session-id",
+		})
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", w.Code)
+		}
+		if capturedUserID != int64(42) {
+			t.Fatalf("expected userID 42, got %v", capturedUserID)
+		}
+	})
 }

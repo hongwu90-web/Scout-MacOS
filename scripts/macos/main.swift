@@ -291,6 +291,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelega
         envVars["FUSION_DB_PATH"] = dbPath
         envVars["FUSION_PORT"] = "8088"
         envVars["FUSION_ALLOW_EMPTY_PASSWORD"] = "true"
+        envVars["SCOUT_STANDALONE_DESKTOP"] = "true"
         envVars["FUSION_LOG_LEVEL"] = "INFO"
         envVars["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin"
 
