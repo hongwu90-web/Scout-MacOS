@@ -389,6 +389,14 @@ export interface TranslateItemResponse {
   cached: boolean;
 }
 
+export interface TranslateBatchRequest {
+  ids: number[];
+}
+
+export interface TranslateBatchResponse {
+  items: TranslateItemResponse[];
+}
+
 export interface TranslateTextResponse {
   original_text: string;
   translated_text: string;

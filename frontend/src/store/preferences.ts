@@ -74,10 +74,19 @@ export interface PreferencesState {
   articlePageSize: ArticlePageSize;
   articleViewMode: ArticleViewMode;
   articleCardZoom: number;
+  autoMarkReadOnOpen: boolean;
+  hideEmptyFeeds: boolean;
+  filterMonitorNoise: boolean;
   setLocale: (locale: string) => void;
   setArticlePageSize: (size: number) => void;
   setArticleViewMode: (mode: ArticleViewMode) => void;
   setArticleCardZoom: (zoom: number) => void;
+  setAutoMarkReadOnOpen: (enabled: boolean) => void;
+  toggleAutoMarkReadOnOpen: () => void;
+  setHideEmptyFeeds: (enabled: boolean) => void;
+  toggleHideEmptyFeeds: () => void;
+  setFilterMonitorNoise: (enabled: boolean) => void;
+  toggleFilterMonitorNoise: () => void;
   increaseArticleCardZoom: () => void;
   decreaseArticleCardZoom: () => void;
   resetArticleCardZoom: () => void;
@@ -90,11 +99,20 @@ export const usePreferencesStore = create<PreferencesState>()(
       articlePageSize: defaultArticlePageSize,
       articleViewMode: "cards",
       articleCardZoom: DEFAULT_ARTICLE_CARD_ZOOM,
+      autoMarkReadOnOpen: true,
+      hideEmptyFeeds: false,
+      filterMonitorNoise: true,
       setLocale: (locale) => set({ locale: normalizeLocale(locale) }),
       setArticlePageSize: (size) =>
         set({ articlePageSize: normalizeArticlePageSize(size) }),
       setArticleViewMode: (mode) => set({ articleViewMode: mode === "compact" ? "compact" : "cards" }),
       setArticleCardZoom: (zoom) => set({ articleCardZoom: normalizeArticleCardZoom(zoom) }),
+      setAutoMarkReadOnOpen: (enabled) => set({ autoMarkReadOnOpen: enabled }),
+      toggleAutoMarkReadOnOpen: () => set((state) => ({ autoMarkReadOnOpen: !state.autoMarkReadOnOpen })),
+      setHideEmptyFeeds: (enabled) => set({ hideEmptyFeeds: enabled }),
+      toggleHideEmptyFeeds: () => set((state) => ({ hideEmptyFeeds: !state.hideEmptyFeeds })),
+      setFilterMonitorNoise: (enabled) => set({ filterMonitorNoise: enabled }),
+      toggleFilterMonitorNoise: () => set((state) => ({ filterMonitorNoise: !state.filterMonitorNoise })),
       increaseArticleCardZoom: () =>
         set((state) => ({
           articleCardZoom: Math.min(
@@ -119,6 +137,9 @@ export const usePreferencesStore = create<PreferencesState>()(
         articlePageSize: state.articlePageSize,
         articleViewMode: state.articleViewMode,
         articleCardZoom: state.articleCardZoom,
+        autoMarkReadOnOpen: state.autoMarkReadOnOpen,
+        hideEmptyFeeds: state.hideEmptyFeeds,
+        filterMonitorNoise: state.filterMonitorNoise,
       }),
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<PreferencesState> | undefined;
@@ -133,6 +154,9 @@ export const usePreferencesStore = create<PreferencesState>()(
           articleCardZoom: normalizeArticleCardZoom(
             persisted?.articleCardZoom ?? currentState.articleCardZoom,
           ),
+          autoMarkReadOnOpen: persisted?.autoMarkReadOnOpen ?? true,
+          hideEmptyFeeds: persisted?.hideEmptyFeeds ?? false,
+          filterMonitorNoise: persisted?.filterMonitorNoise ?? true,
         };
       },
     },

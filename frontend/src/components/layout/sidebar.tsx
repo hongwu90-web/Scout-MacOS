@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import { useNavigate, useLocation } from "@tanstack/react-router";
 import { FeedList } from "@/components/feed/feed-list";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store";
+import { useMonitoredPages } from "@/queries/monitors";
 
 export function Sidebar() {
   const { t } = useI18n();
@@ -11,6 +13,12 @@ export function Sidebar() {
   const { pathname } = useLocation();
   const isFeedsPage = pathname === "/feeds";
   const isMonitorsPage = pathname.startsWith("/monitors");
+
+  const { data: monitoredPages = [] } = useMonitoredPages();
+  const unreadMonitorsCount = useMemo(
+    () => monitoredPages.filter((p) => p.unread).length,
+    [monitoredPages],
+  );
 
   return (
     <aside className="font-mono tracking-tight flex h-full w-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -50,6 +58,11 @@ export function Sidebar() {
         >
           <div className="flex items-center gap-2">
             <span>WEBPAGE MONITORS</span>
+            {unreadMonitorsCount > 0 && (
+              <span className="font-mono text-[10px] font-bold text-amber-500 bg-amber-500/10 px-1 rounded-xs">
+                {unreadMonitorsCount}
+              </span>
+            )}
           </div>
           <span className="text-[10px]">→</span>
         </button>

@@ -150,6 +150,9 @@ export const itemAPI = {
 
   translate: (id: number) =>
     api.post<import("./types").TranslateItemResponse>(`/items/${id}/translate`),
+
+  translateBatch: (ids: number[]) =>
+    api.post<import("./types").TranslateBatchResponse>("/items/translate-batch", { ids }),
 };
 
 // Focus Feed APIs (Keyword Focus Feeds)

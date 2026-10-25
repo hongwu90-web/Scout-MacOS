@@ -312,8 +312,9 @@ function useSetItemsReadState(targetUnread: boolean) {
       await Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.feeds.all }),
         qc.invalidateQueries({ queryKey: queryKeys.focusFeeds.all }),
-        qc.invalidateQueries({ queryKey: queryKeys.items.all }),
         qc.invalidateQueries({ queryKey: queryKeys.groups.all }),
+        // Mark items stale without immediately refetching in-place to keep triage list stable
+        qc.invalidateQueries({ queryKey: queryKeys.items.all, refetchType: "none" }),
         qc.refetchQueries({ queryKey: queryKeys.feeds.list() }),
         qc.refetchQueries({ queryKey: queryKeys.focusFeeds.list() }),
       ]);
@@ -415,3 +416,57 @@ export function useTranslateItemTitle() {
     },
   });
 }
+
+export function useTranslateBatch() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (ids: number[]) => {
+      return await itemAPI.translateBatch(ids);
+    },
+    onSuccess: (data) => {
+      if (!data?.items || data.items.length === 0) return;
+
+      const transMap = new Map<number, string>();
+      for (const item of data.items) {
+        if (item.translated_title) {
+          transMap.set(item.id, item.translated_title);
+        }
+      }
+      if (transMap.size === 0) return;
+
+      // Update individual item details
+      for (const [id, translatedTitle] of transMap.entries()) {
+        qc.setQueryData<Item | undefined>(
+          queryKeys.items.detail(id),
+          (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              translated_title: translatedTitle,
+            };
+          },
+        );
+      }
+
+      // Update items in infinite query lists
+      qc.setQueriesData<ItemsInfiniteData>(
+        { queryKey: queryKeys.items.lists() },
+        (old) => {
+          if (!old?.pages) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              data: page.data.map((item) => {
+                const trans = transMap.get(item.id);
+                return trans ? { ...item, translated_title: trans } : item;
+              }),
+            })),
+          };
+        },
+      );
+    },
+  });
+}
+

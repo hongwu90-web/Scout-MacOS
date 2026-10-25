@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { cn, formatDate } from "@/lib/utils";
 import type { Item } from "@/lib/api";
 import { Star, Check } from "lucide-react";
@@ -15,6 +16,7 @@ interface ArticleCompactItemProps {
   feedName: string;
   isMultiSelected?: boolean;
   isSelectionMode?: boolean;
+  matchedKeywords?: string[];
   onToggleSelect?: (e: React.MouseEvent) => void;
 }
 
@@ -30,11 +32,26 @@ export function ArticleCompactItem({
   feedName,
   isMultiSelected = false,
   isSelectionMode = false,
+  matchedKeywords,
   onToggleSelect,
 }: ArticleCompactItemProps) {
   const isSelected = selectedArticleId === article.id;
   const hasTranslation = Boolean(article.translated_title && article.translated_title.trim() !== "");
   const displayTitle = hasTranslation ? article.translated_title : article.title;
+
+  const matchedPill = useMemo(() => {
+    if (!matchedKeywords || matchedKeywords.length === 0) return null;
+    const title = (article.title || "").toLowerCase();
+    const trans = (article.translated_title || "").toLowerCase();
+    const content = (article.content || "").toLowerCase();
+    for (const kw of matchedKeywords) {
+      const lower = kw.toLowerCase().trim();
+      if (lower && (title.includes(lower) || trans.includes(lower) || content.includes(lower))) {
+        return kw.trim();
+      }
+    }
+    return null;
+  }, [matchedKeywords, article.title, article.translated_title, article.content]);
 
   const handleToggleRead = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -103,6 +120,12 @@ export function ArticleCompactItem({
         <span className="font-mono text-[10px] uppercase font-bold text-muted-foreground/80 truncate max-w-[130px] shrink-0">
           [{feedName}]
         </span>
+
+        {matchedPill && (
+          <span className="font-mono text-[9px] uppercase font-bold text-primary bg-primary/10 border border-primary/20 px-1 py-0.5 rounded shrink-0">
+            [{matchedPill}]
+          </span>
+        )}
 
         {/* Article Title */}
         <span

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { cn, formatDate, extractSummary } from "@/lib/utils";
 import type { Item } from "@/lib/api";
 import { useTranslateItemTitle } from "@/queries/items";
@@ -18,6 +18,7 @@ interface ArticleItemProps {
   feedName: string;
   isMultiSelected?: boolean;
   isSelectionMode?: boolean;
+  matchedKeywords?: string[];
   onToggleSelect?: (e: React.MouseEvent) => void;
 }
 
@@ -33,6 +34,7 @@ export function ArticleItem({
   feedName,
   isMultiSelected = false,
   isSelectionMode = false,
+  matchedKeywords,
   onToggleSelect,
 }: ArticleItemProps) {
   const [showOriginal, setShowOriginal] = useState(false);
@@ -79,15 +81,39 @@ export function ArticleItem({
     }
   };
 
-  const wordCount = article.content ? article.content.replace(/<[^>]*>/g, "").split(/\s+/).length : 0;
-  const readTime = Math.max(1, Math.ceil(wordCount / 220));
+  // Performance: Memoize word count and summary calculations
+  const readTime = useMemo(() => {
+    if (!article.content) return 1;
+    const wordCount = article.content.replace(/<[^>]*>/g, "").split(/\s+/).length;
+    return Math.max(1, Math.ceil(wordCount / 220));
+  }, [article.content]);
+
+  const summary = useMemo(() => {
+    return extractSummary(article.content || "", 140);
+  }, [article.content]);
+
+  // Core Mechanism: Find first matched keyword for signal badges
+  const matchedPill = useMemo(() => {
+    if (!matchedKeywords || matchedKeywords.length === 0) return null;
+    const title = (article.title || "").toLowerCase();
+    const trans = (article.translated_title || "").toLowerCase();
+    const content = (article.content || "").toLowerCase();
+    for (const kw of matchedKeywords) {
+      const lower = kw.toLowerCase().trim();
+      if (lower && (title.includes(lower) || trans.includes(lower) || content.includes(lower))) {
+        return kw.trim();
+      }
+    }
+    return null;
+  }, [matchedKeywords, article.title, article.translated_title, article.content]);
 
   const displayTitle = hasTranslation && !showOriginal ? article.translated_title : article.title;
 
   return (
     <div
+      onClick={() => onSelectArticle(article.id)}
       className={cn(
-        "group relative flex w-full flex-col justify-between gap-3 border border-border p-4 text-left transition-all rounded-xs bg-card hover:border-foreground/40",
+        "group relative flex w-full flex-col justify-between gap-3 border border-border p-4 text-left transition-all rounded-xs bg-card hover:border-foreground/40 cursor-pointer scout-card-deferred",
         isSelected
           ? "border-primary ring-1 ring-primary bg-accent/40"
           : "hover:bg-accent/20",
@@ -102,6 +128,14 @@ export function ArticleItem({
             <span className="text-primary shrink-0">[ {readTime} MIN READ ]</span>
             <span>/</span>
             <span className="truncate text-foreground/80">[ {feedName} ]</span>
+            {matchedPill && (
+              <>
+                <span>/</span>
+                <span className="text-primary font-bold bg-primary/10 px-1 py-0.5 rounded border border-primary/20 shrink-0">
+                  [ {matchedPill} ]
+                </span>
+              </>
+            )}
             {hasTranslation && !showOriginal && (
               <>
                 <span>/</span>
@@ -134,15 +168,11 @@ export function ArticleItem({
           </div>
         </div>
 
-        {/* Article Title - Click to open reader sidebar */}
-        <button
-          type="button"
-          onClick={() => onSelectArticle(article.id)}
-          className="text-left w-full group/title focus:outline-none"
-        >
+        {/* Article Title */}
+        <div className="text-left w-full group/title">
           <h3
             className={cn(
-              "line-clamp-2 text-sm font-bold leading-snug tracking-tight font-sans hover:underline cursor-pointer",
+              "line-clamp-2 text-sm font-bold leading-snug tracking-tight font-sans hover:underline",
               isStarredMode || article.unread ? "text-foreground" : "text-muted-foreground/80 font-medium",
             )}
           >
@@ -153,11 +183,11 @@ export function ArticleItem({
               {article.title}
             </p>
           )}
-        </button>
+        </div>
 
         {/* Short Excerpt */}
         <p className="line-clamp-2 text-xs text-muted-foreground leading-relaxed">
-          {extractSummary(article.content, 140)}
+          {summary}
         </p>
       </div>
 

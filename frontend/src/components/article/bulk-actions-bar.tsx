@@ -34,7 +34,7 @@ import { useSelectionStore } from "@/store/selection";
 import { LabelPopover } from "./label-popover";
 import { EmailDigestDialog } from "./email-digest-dialog";
 import { printSelectedArticles } from "./article-print-view";
-import { useMarkItemsRead, useMarkItemsUnread, useTranslateItemTitle } from "@/queries/items";
+import { useMarkItemsRead, useMarkItemsUnread, useTranslateBatch } from "@/queries/items";
 import { useBatchCreateBookmarks, useBatchDeleteBookmarks } from "@/queries/bookmarks";
 import { openExternalUrl } from "@/lib/safe-url";
 import { extractSummary, cn } from "@/lib/utils";
@@ -68,7 +68,7 @@ export function BulkActionsBar({
   const markUnread = useMarkItemsUnread();
   const batchCreateBookmarks = useBatchCreateBookmarks();
   const batchDeleteBookmarks = useBatchDeleteBookmarks();
-  const translateTitle = useTranslateItemTitle();
+  const translateBatch = useTranslateBatch();
 
   if (!isSelectionMode && selectedIds.length === 0) {
     return null;
@@ -194,22 +194,23 @@ export function BulkActionsBar({
   // 7. Translate Titles
   const handleTranslateSelected = async () => {
     if (selectedArticles.length === 0) return;
+    const idsToTranslate = selectedArticles
+      .filter((item) => !item.translated_title)
+      .map((item) => item.id);
+
+    if (idsToTranslate.length === 0) {
+      toast.info("Selected titles are already translated");
+      return;
+    }
+
     setIsTranslating(true);
-    let count = 0;
     try {
-      for (const item of selectedArticles) {
-        if (!item.translated_title) {
-          await translateTitle.mutateAsync(item.id);
-          count++;
-        }
-      }
+      await translateBatch.mutateAsync(idsToTranslate);
       toast.success(
-        count > 0
-          ? `Translated ${count} title${count === 1 ? "" : "s"} to English`
-          : "Selected titles are already translated",
+        `Translated ${idsToTranslate.length} title${idsToTranslate.length === 1 ? "" : "s"} to English`,
       );
     } catch {
-      toast.error("Failed to translate some titles");
+      toast.error("Failed to translate selected titles");
     } finally {
       setIsTranslating(false);
     }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, LayoutGrid, List, CheckSquare, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { useUrlState, type ArticleFilter } from "@/hooks/use-url-state";
 import { useArticleList } from "@/hooks/use-article-list";
 import { useMarkItemsRead, useMarkItemsUnread } from "@/queries/items";
 import { useFeedLookup } from "@/queries/feeds";
+import { useFocusFeed } from "@/queries/focus_feeds";
 import { useCreateBookmark, useDeleteBookmark } from "@/queries/bookmarks";
 import { useSelectionStore } from "@/store/selection";
 import { useI18n } from "@/lib/i18n";
@@ -18,7 +19,11 @@ import { cn } from "@/lib/utils";
 import { usePreferencesStore } from "@/store";
 import type { Item } from "@/lib/api";
 
-export function ArticleList() {
+interface ArticleListProps {
+  matchedKeywords?: string[];
+}
+
+export function ArticleList({ matchedKeywords: propKeywords }: ArticleListProps = {}) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const {
@@ -109,6 +114,49 @@ export function ArticleList() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const wheelAccumulatorRef = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const { data: selectedFocusFeed } = useFocusFeed(selectedFocusFeedId);
+  const matchedKeywords = useMemo(() => {
+    if (propKeywords && propKeywords.length > 0) return propKeywords;
+    const kws: string[] = [];
+    if (selectedFocusFeed?.keywords) {
+      try {
+        const parsed = JSON.parse(selectedFocusFeed.keywords);
+        if (Array.isArray(parsed)) {
+          kws.push(...parsed.filter((k: unknown): k is string => typeof k === "string"));
+        }
+      } catch {
+        kws.push(
+          ...selectedFocusFeed.keywords
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        );
+      }
+    }
+    if (keywordQuery && keywordQuery.trim()) {
+      kws.push(keywordQuery.trim());
+    }
+    return kws;
+  }, [propKeywords, selectedFocusFeed?.keywords, keywordQuery]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "350px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, fetchNextPage]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -313,6 +361,7 @@ export function ArticleList() {
                             feedName={feed?.name ?? bookmark?.feed_name ?? t("common.unknown")}
                             isMultiSelected={selectedIds.includes(article.id)}
                             isSelectionMode={isSelectionMode}
+                            matchedKeywords={matchedKeywords}
                             onToggleSelect={(e) => {
                               if (e.shiftKey) {
                                 selectRange(article.id, orderedIds);
@@ -352,6 +401,7 @@ export function ArticleList() {
                             feedName={feed?.name ?? bookmark?.feed_name ?? t("common.unknown")}
                             isMultiSelected={selectedIds.includes(article.id)}
                             isSelectionMode={isSelectionMode}
+                            matchedKeywords={matchedKeywords}
                             onToggleSelect={(e) => {
                               if (e.shiftKey) {
                                 selectRange(article.id, orderedIds);
@@ -365,7 +415,7 @@ export function ArticleList() {
                   </div>
                 )}
                 {hasMore && (
-                  <div className="flex justify-center py-4">
+                  <div ref={sentinelRef} className="flex justify-center py-4">
                     <Button
                       variant="outline"
                       size="sm"

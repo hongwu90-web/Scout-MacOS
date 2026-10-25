@@ -537,6 +537,19 @@ func (s *Store) CreatePageSnapshot(userID int64, snapshot *model.PageSnapshot) (
 	if res.SectionsJSON != "" {
 		_ = json.Unmarshal([]byte(res.SectionsJSON), &res.Sections)
 	}
+
+	// Retention policy: automatically prune old snapshots beyond the 30 most recent per (user_id, page_id)
+	_, _ = s.db.Exec(`
+		DELETE FROM page_snapshots 
+		WHERE user_id = :user_id AND page_id = :page_id
+		  AND id NOT IN (
+			SELECT id FROM page_snapshots 
+			WHERE user_id = :user_id AND page_id = :page_id 
+			ORDER BY created_at DESC, id DESC 
+			LIMIT 30
+		  )
+	`, sql.Named("user_id", userID), sql.Named("page_id", snapshot.PageID))
+
 	return res, nil
 }
 

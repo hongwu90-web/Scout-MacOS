@@ -153,3 +153,57 @@ func TestTranslateText_Handler(t *testing.T) {
 		t.Errorf("expected lang %s, got %s", translator.LangChinese, resp.DetectedLang)
 	}
 }
+
+func TestTranslateItemsBatch_Handler(t *testing.T) {
+	h, st := newFeverTestHandler(t)
+	h.SetTranslator(setupTestTranslator("English Translation"))
+
+	group, err := st.CreateGroup(1, "News")
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+
+	feed, err := st.CreateFeed(1, group.ID, "Nikkei", "https://example.com/rss", "https://example.com", "")
+	if err != nil {
+		t.Fatalf("CreateFeed: %v", err)
+	}
+
+	item1, err := st.CreateItem(1, feed.ID, "guid-b1", "日銀の決定", "https://example.com/b1", "content", 1700000001)
+	if err != nil {
+		t.Fatalf("CreateItem 1: %v", err)
+	}
+	item2, err := st.CreateItem(1, feed.ID, "guid-b2", "米連邦準備制度", "https://example.com/b2", "content", 1700000002)
+	if err != nil {
+		t.Fatalf("CreateItem 2: %v", err)
+	}
+
+	r := newTestRouter()
+	r.POST("/api/items/translate-batch", func(c *gin.Context) {
+		c.Set("userID", int64(1))
+		h.translateItemsBatch(c)
+	})
+
+	body := mustJSONBody(t, TranslateBatchRequest{
+		IDs: []int64{item1.ID, item2.ID},
+	})
+	w := performRequest(r, http.MethodPost, "/api/items/translate-batch", body, map[string]string{"Content-Type": "application/json"})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp TranslateBatchResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if len(resp.Items) != 2 {
+		t.Fatalf("expected 2 translated items, got %d", len(resp.Items))
+	}
+	for _, itm := range resp.Items {
+		if itm.TranslatedTitle != "English Translation" {
+			t.Errorf("expected translated title 'English Translation', got %q", itm.TranslatedTitle)
+		}
+	}
+}
+

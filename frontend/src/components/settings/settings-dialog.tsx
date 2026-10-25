@@ -61,8 +61,14 @@ function AppearanceContent() {
   const { theme, setTheme } = useTheme();
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const setShortcutsOpen = useUIStore((s) => s.setShortcutsOpen);
-  const { locale, articlePageSize, setLocale, setArticlePageSize } =
-    usePreferencesStore();
+  const {
+    locale,
+    articlePageSize,
+    autoMarkReadOnOpen,
+    setLocale,
+    setArticlePageSize,
+    toggleAutoMarkReadOnOpen,
+  } = usePreferencesStore();
 
   return (
     <div className="space-y-5">
@@ -139,6 +145,24 @@ function AppearanceContent() {
             <SelectItem value="system">{t("settings.theme.system")}</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Auto-mark read on open */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Auto-mark Read on Open</p>
+          <p className="text-[13px] text-muted-foreground">
+            Automatically mark articles as read when selected, preserving triage flow
+          </p>
+        </div>
+        <Button
+          variant={autoMarkReadOnOpen ? "default" : "outline"}
+          size="sm"
+          onClick={toggleAutoMarkReadOnOpen}
+          className="text-xs font-mono"
+        >
+          {autoMarkReadOnOpen ? "ENABLED" : "DISABLED"}
+        </Button>
       </div>
 
       {/* Keyboard shortcuts */}

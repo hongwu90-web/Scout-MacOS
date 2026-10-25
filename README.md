@@ -1,4 +1,4 @@
-<h1 align="center">00 / SCOUT</h1>
+<h1 align="center">00 / ASIATIQA SCOUT</h1>
 <p align="center">A high-performance intelligence aggregator & webpage change monitoring platform.</p>
 
 > 📖 **New Developer or Non-Coder?** Check out the complete [**App Architecture & Developer Guide**](./ARCHITECTURE_AND_DEV_GUIDE.md) to understand how the app works, run the local dev server, and modify features step-by-step!

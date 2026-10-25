@@ -32,6 +32,7 @@ interface MonitorDiffViewProps {
 }
 
 import DOMPurify from "dompurify";
+import { usePreferencesStore } from "@/store";
 
 const purify = typeof window !== "undefined" ? DOMPurify(window) : DOMPurify;
 
@@ -94,7 +95,7 @@ export function MonitorDiffView({
 
   const { data: snapshotList } = useMonitoredPageSnapshots(page?.id ?? 0);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null);
-  const [filterNoise, setFilterNoise] = useState(false);
+  const { filterMonitorNoise, toggleFilterMonitorNoise } = usePreferencesStore();
 
   // Active snapshot: from history dropdown, or prop snapshot, or latest from query
   const activeSnapshot = useMemo(() => {
@@ -108,7 +109,7 @@ export function MonitorDiffView({
   const rawSections: SectionChange[] = activeSnapshot?.sections || [];
 
   const sections = useMemo(() => {
-    if (!filterNoise) return rawSections;
+    if (!filterMonitorNoise) return rawSections;
     return rawSections.filter((s) => {
       const oldClean = (s.old_text || "").trim();
       const newClean = (s.new_text || "").trim();
@@ -118,7 +119,7 @@ export function MonitorDiffView({
       }
       return true;
     });
-  }, [rawSections, filterNoise]);
+  }, [rawSections, filterMonitorNoise]);
 
   if (!page) {
     return (
@@ -338,17 +339,17 @@ export function MonitorDiffView({
 
           <button
             type="button"
-            onClick={() => setFilterNoise((prev) => !prev)}
+            onClick={toggleFilterMonitorNoise}
             className={cn(
               "flex items-center gap-1 text-[10px] uppercase font-bold border px-2 py-1 transition-colors rounded-xs",
-              filterNoise
+              filterMonitorNoise
                 ? "bg-primary text-primary-foreground border-primary"
                 : "border-border hover:border-foreground/80 text-muted-foreground bg-card hover:text-foreground",
             )}
             title="Filter out trivial single-number and timestamp changes"
           >
             <SlidersHorizontal className="h-2.5 w-2.5" />
-            <span>{filterNoise ? "[NOISE FILTER: ON]" : "[NOISE FILTER: OFF]"}</span>
+            <span>{filterMonitorNoise ? "[NOISE FILTER: ON]" : "[NOISE FILTER: OFF]"}</span>
           </button>
         </div>
       </div>

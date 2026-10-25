@@ -1,6 +1,6 @@
-# 🛰️ SCOUT — App Architecture & Developer Guide
+# 🛰️ ASIATIQA SCOUT — App Architecture & Developer Guide
 
-Welcome to the official developer guide for **SCOUT** (00 / SCOUT). 
+Welcome to the official developer guide for **ASIATIQA SCOUT** (00 / SCOUT). 
 
 This guide is designed for **everyone** — whether you are a non-coder, a designer, a junior developer, or an experienced engineer. It breaks down the entire system architecture in plain English, explains how every folder and file works, provides step-by-step instructions for running the local environment, and shows you exactly how to add or update features.
 
@@ -31,7 +31,7 @@ This guide is designed for **everyone** — whether you are a non-coder, a desig
 
 ## 1. High-Level Architecture (Plain English)
 
-SCOUT is built using a **2-Tier Decoupled Architecture** with a single-binary production bundler:
+ASIATIQA SCOUT is built using a **2-Tier Decoupled Architecture** with a single-binary production bundler:
 
 ```mermaid
 graph TD
@@ -88,7 +88,7 @@ Project Scout/
 │       └── web/dist/          # Embedded production frontend files (compiled index.html & assets)
 │
 └── frontend/                  # ⚛️ React + TypeScript Frontend Core
-    ├── index.html             # HTML shell containing page <title>Scout</title>
+    ├── index.html             # HTML shell containing page <title>Asiatiqa Scout</title>
     ├── package.json           # Frontend dependencies & npm script commands
     ├── vite.config.ts         # Vite build tool configuration & proxy settings
     ├── public/                # Static icons, manifest.json (PWA details), favicons
@@ -308,4 +308,4 @@ When editing or updating the layout, **always follow these user-defined guidelin
 
 ---
 
-*Documentation maintained for **SCOUT (00 / SCOUT)**.*
+*Documentation maintained for **ASIATIQA SCOUT (00 / SCOUT)**.*

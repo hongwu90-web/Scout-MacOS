@@ -123,7 +123,7 @@ func (h *Handler) SetTranslator(t *translator.GoogleTranslator) {
 
 func (h *Handler) SetupRouter() *gin.Engine {
 	r := gin.New()
-	r.Use(requestLogMiddleware(), recoveryMiddleware())
+	r.Use(requestLogMiddleware(), recoveryMiddleware(), gzipMiddleware())
 
 	if err := h.configureTrustedProxies(r); err != nil {
 		slog.Warn("failed to configure trusted proxies", "error", err)
@@ -183,6 +183,7 @@ func (h *Handler) SetupRouter() *gin.Engine {
 			auth.POST("/items/mark-read-by-date", h.markItemsReadByDate)
 			auth.DELETE("/items/read", h.purgeReadItems)
 			auth.POST("/items/:id/translate", h.translateItemTitle)
+			auth.POST("/items/translate-batch", h.translateItemsBatch)
 			auth.POST("/translate", h.translateText)
 
 			auth.GET("/search", h.search)
@@ -280,11 +281,6 @@ func (h *Handler) corsMiddleware() gin.HandlerFunc {
 func (h *Handler) isCredentialsAllowed(origin string) bool {
 	// Always allow loopback origins for local desktop app and dev server
 	if isLocalhostOrigin(origin) {
-		return true
-	}
-
-	// If no CORS origins configured, allow credentials for any origin permitted by isOriginAllowed
-	if h.config == nil || len(h.config.CORSAllowedOrigins) == 0 {
 		return true
 	}
 

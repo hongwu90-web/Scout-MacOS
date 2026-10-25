@@ -14,7 +14,7 @@ import { useFocusFeeds, useDeleteFocusFeed } from "@/queries/focus_feeds";
 import { useMarkItemsReadByDate } from "@/queries/items";
 import { useBookmarkLookup } from "@/queries/bookmarks";
 import { useUrlState } from "@/hooks/use-url-state";
-import { useUIStore, useFeedOrderStore } from "@/store";
+import { useUIStore, useFeedOrderStore, usePreferencesStore } from "@/store";
 import { cn } from "@/lib/utils";
 import type { Feed, FocusFeed } from "@/lib/api";
 import { FeedGroup } from "./feed-group";
@@ -27,7 +27,8 @@ export function FeedList() {
   const { data: groups = [], isLoading } = useGroups();
   const { feeds, getFeedsByGroup } = useFeedLookup();
   const { data: focusFeeds = [] } = useFocusFeeds();
-  const { getTotalUnreadCount } = useUnreadCounts();
+  const { getTotalUnreadCount, getGroupUnreadCount } = useUnreadCounts();
+  const { hideEmptyFeeds, toggleHideEmptyFeeds } = usePreferencesStore();
   const { total: starredTotal } = useBookmarkLookup();
   const updateFeed = useUpdateFeed();
   const deleteFeed = useDeleteFeed();
@@ -290,31 +291,51 @@ export function FeedList() {
             <span className="text-[11px] font-bold text-sidebar-foreground/60 tracking-wider uppercase font-mono">
               04 / FEEDS
             </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleHideEmptyFeeds();
+              }}
+              className={cn(
+                "text-[9px] font-mono px-1.5 py-0.5 rounded-xs transition-colors border",
+                hideEmptyFeeds
+                  ? "bg-primary text-primary-foreground border-primary font-bold"
+                  : "text-muted-foreground border-transparent hover:border-sidebar-border hover:text-foreground",
+              )}
+              title={hideEmptyFeeds ? "Showing unread feeds only (click to show all)" : "Showing all feeds (click to hide empty)"}
+            >
+              {hideEmptyFeeds ? "UNREAD ONLY" : "SHOW ALL"}
+            </button>
           </div>
 
           {/* Feed groups */}
           <div className="w-full min-w-0 space-y-0.5">
-            {groups.map((group, idx) => {
-              const groupFeeds = getFeedsByGroup(group.id);
+            {groups
+              .filter((group) => !hideEmptyFeeds || getGroupUnreadCount(group.id) > 0)
+              .map((group, idx) => {
+                const groupFeeds = getFeedsByGroup(group.id).filter(
+                  (f) => !hideEmptyFeeds || (f.unread_count ?? 0) > 0,
+                );
 
-              return (
-                <FeedGroup
-                  key={group.id}
-                  groupId={group.id}
-                  name={group.name}
-                  feeds={groupFeeds}
-                  index={idx + 1}
-                  onFeedDrop={handleFeedDrop}
-                  onFeedReorder={handleFeedReorder}
-                  onGroupContextMenu={handleGroupContextMenu}
-                  onFeedContextMenu={handleFeedContextMenu}
-                />
-              );
-            })}
+                return (
+                  <FeedGroup
+                    key={group.id}
+                    groupId={group.id}
+                    name={group.name}
+                    feeds={groupFeeds}
+                    index={idx + 1}
+                    onFeedDrop={handleFeedDrop}
+                    onFeedReorder={handleFeedReorder}
+                    onGroupContextMenu={handleGroupContextMenu}
+                    onFeedContextMenu={handleFeedContextMenu}
+                  />
+                );
+              })}
 
             {/* Ungrouped feeds (group_id = 0) */}
             {feeds
-              .filter((f) => f.group_id === 0)
+              .filter((f) => f.group_id === 0 && (!hideEmptyFeeds || (f.unread_count ?? 0) > 0))
               .map((feed) => (
                 <FeedItem
                   key={feed.id}

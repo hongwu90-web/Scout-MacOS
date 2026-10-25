@@ -16,7 +16,12 @@ func (h *Handler) setupFrontendRoutes(r *gin.Engine) error {
 		return err
 	}
 
-	r.StaticFS("/assets", http.FS(frontendFS))
+	assetsGroup := r.Group("/assets")
+	assetsGroup.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.Next()
+	})
+	assetsGroup.StaticFS("", http.FS(frontendFS))
 
 	fileServer := http.FileServer(http.FS(frontendFS))
 	r.NoRoute(func(c *gin.Context) {
@@ -68,6 +73,7 @@ func serveFrontendRoute(c *gin.Context, frontendFS fs.FS, fileServer http.Handle
 }
 
 func serveFrontendIndex(c *gin.Context, fileServer http.Handler) {
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 	serveFrontendRequestPath(c, fileServer, "/")
 }
 

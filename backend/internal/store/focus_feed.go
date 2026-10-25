@@ -97,9 +97,8 @@ func (s *Store) GetFocusFeed(userID, id int64) (*model.FocusFeed, error) {
 		return nil, err
 	}
 
-	// Compute unread and total items count
-	unreadCount, _ := s.CountFocusFeedItems(userID, ff, boolPtr(true))
-	totalCount, _ := s.CountFocusFeedItems(userID, ff, nil)
+	// Compute unread and total items count in a single database pass
+	totalCount, unreadCount, _ := s.CountFocusFeedStats(userID, ff)
 	ff.UnreadCount = unreadCount
 	ff.ItemCount = totalCount
 
@@ -128,8 +127,7 @@ func (s *Store) ListFocusFeeds(userID int64) ([]*model.FocusFeed, error) {
 			return nil, err
 		}
 
-		unreadCount, _ := s.CountFocusFeedItems(userID, ff, boolPtr(true))
-		totalCount, _ := s.CountFocusFeedItems(userID, ff, nil)
+		totalCount, unreadCount, _ := s.CountFocusFeedStats(userID, ff)
 		ff.UnreadCount = unreadCount
 		ff.ItemCount = totalCount
 
@@ -263,6 +261,31 @@ func (s *Store) ListFocusFeedItems(userID int64, ff *model.FocusFeed, params Lis
 	}
 
 	return items, rows.Err()
+}
+
+// CountFocusFeedStats computes total and unread counts for a focus feed in a single query.
+func (s *Store) CountFocusFeedStats(userID int64, ff *model.FocusFeed) (total int64, unread int64, err error) {
+	query := `SELECT COUNT(*), COALESCE(SUM(CASE WHEN items.unread = 1 THEN 1 ELSE 0 END), 0) FROM items WHERE items.user_id = :user_id`
+	args := []any{sql.Named("user_id", userID)}
+
+	keywords := parseKeywords(ff.Keywords)
+	kwClause, kwArgs := buildFocusFeedKeywordClause(keywords)
+	query += kwClause
+	args = append(args, kwArgs...)
+
+	feedIDs := parseFeedIDs(ff.FeedIDs)
+	if len(feedIDs) > 0 {
+		var placeholders []string
+		for idx, fid := range feedIDs {
+			name := fmt.Sprintf("ff_cnt_feed_%d", idx)
+			placeholders = append(placeholders, ":"+name)
+			args = append(args, sql.Named(name, fid))
+		}
+		query += fmt.Sprintf(" AND items.feed_id IN (%s)", strings.Join(placeholders, ","))
+	}
+
+	err = s.db.QueryRow(query, args...).Scan(&total, &unread)
+	return total, unread, err
 }
 
 // CountFocusFeedItems counts items matching the focus feed.

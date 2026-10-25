@@ -187,3 +187,10 @@ button:active {
   transform: scale(0.985);
 }
 
+/* Modern Web Performance: Defer off-screen card layout/paint calculations */
+.scout-card-deferred {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 165px;
+}
+
+

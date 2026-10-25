@@ -1,7 +1,7 @@
 import { ArticleList } from "@/components/article/article-list";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
-import { CheckCheck, Trash2, Calendar, RefreshCw, FileDown, ChevronDown, Search, X, Crosshair } from "lucide-react";
+import { CheckCheck, Trash2, Calendar, RefreshCw, FileDown, ChevronDown, Search, X, Crosshair, Languages, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -32,6 +32,7 @@ import {
   useItem,
   useMarkItemsRead,
   useMarkItemsUnread,
+  useTranslateBatch,
 } from "@/queries/items";
 import {
   useCreateBookmark,
@@ -41,6 +42,7 @@ import {
 import { useArticleNavigation } from "@/hooks/use-keyboard";
 import { itemAPI, bookmarkAPI, focusFeedAPI, type Item } from "@/lib/api";
 import { useSelectionStore } from "@/store/selection";
+import { usePreferencesStore } from "@/store";
 import { extractSummary, cn } from "@/lib/utils";
 
 export function ArticlePage() {
@@ -134,6 +136,38 @@ export function ArticlePage() {
   const feed = article ? getFeedById(article.feed_id) : null;
   const starred = article ? isItemStarred(article.id) : false;
   const safeArticleLink = article ? toSafeExternalUrl(article.link) : null;
+
+  const autoMarkReadOnOpen = usePreferencesStore((s) => s.autoMarkReadOnOpen);
+  const translateBatch = useTranslateBatch();
+
+  // Auto-mark as read on open (click or J/K navigation), preserving list visibility
+  useEffect(() => {
+    if (!autoMarkReadOnOpen || isStarredMode || !selectedArticleId || selectedArticleId <= 0) {
+      return;
+    }
+    if (article && article.id === selectedArticleId && article.unread) {
+      markRead.mutate([selectedArticleId]);
+    }
+  }, [selectedArticleId, article?.id, article?.unread, autoMarkReadOnOpen, isStarredMode, markRead]);
+
+  // Find visible headlines in foreign scripts (CJK, Cyrillic, Arabic, Thai) that lack translations
+  const cjkOrForeignArticles = useMemo(() => {
+    return articles.filter((a) => {
+      if (!a || !a.id || a.translated_title) return false;
+      return /[\u3000-\u9fff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f]/.test(a.title || "");
+    });
+  }, [articles]);
+
+  const handleBatchTranslateVisible = async () => {
+    if (cjkOrForeignArticles.length === 0) return;
+    try {
+      const ids = cjkOrForeignArticles.map((a) => a.id);
+      await translateBatch.mutateAsync(ids);
+      toast.success(`Translated ${ids.length} headlines into English`);
+    } catch {
+      toast.error("Failed to translate headlines");
+    }
+  };
 
   const handleToggleRead = async () => {
     if (!article || !canToggleRead) return;
@@ -540,6 +574,24 @@ export function ArticlePage() {
                   <RefreshCw className={`h-4 w-4 ${refreshFeeds.isPending ? "animate-spin" : ""}`} />
                   Check for updates
                 </Button>
+
+                {cjkOrForeignArticles.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleBatchTranslateVisible()}
+                    disabled={translateBatch.isPending}
+                    className="gap-1.5 text-xs text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+                    title="Translate visible foreign headlines into English"
+                  >
+                    {translateBatch.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Languages className="h-4 w-4" />
+                    )}
+                    Translate {cjkOrForeignArticles.length} {cjkOrForeignArticles.length === 1 ? "title" : "titles"}
+                  </Button>
+                )}
 
                 <Button
                   variant="outline"

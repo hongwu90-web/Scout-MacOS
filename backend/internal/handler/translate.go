@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/0x2E/fusion/internal/store"
 	"github.com/0x2E/fusion/internal/translator"
@@ -172,4 +173,132 @@ func (h *Handler) translateText(c *gin.Context) {
 		DetectedLang:   detectedLang,
 		Cached:         false,
 	})
+}
+
+type TranslateBatchRequest struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
+type TranslateBatchResponseItem struct {
+	ID              int64  `json:"id"`
+	OriginalTitle   string `json:"original_title"`
+	TranslatedTitle string `json:"translated_title"`
+	DetectedLang    string `json:"detected_lang"`
+	Cached          bool   `json:"cached"`
+}
+
+type TranslateBatchResponse struct {
+	Items []TranslateBatchResponseItem `json:"items"`
+}
+
+func (h *Handler) translateItemsBatch(c *gin.Context) {
+	userID := getUserID(c)
+	var req TranslateBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ids array is required"})
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		c.JSON(http.StatusOK, gin.H{"items": []TranslateBatchResponseItem{}})
+		return
+	}
+
+	if len(req.IDs) > 100 {
+		req.IDs = req.IDs[:100]
+	}
+
+	if h.translator == nil {
+		h.translator = translator.New()
+	}
+
+	results := make([]TranslateBatchResponseItem, len(req.IDs))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5) // Bounded concurrency limit
+
+	for i, id := range req.IDs {
+		wg.Add(1)
+		go func(idx int, itemId int64) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			it, err := h.store.GetItem(userID, itemId)
+			if err != nil {
+				return
+			}
+
+			title := strings.TrimSpace(it.Title)
+			if title == "" {
+				results[idx] = TranslateBatchResponseItem{
+					ID:              itemId,
+					OriginalTitle:   "",
+					TranslatedTitle: "",
+					DetectedLang:    translator.LangEnglish,
+					Cached:          true,
+				}
+				return
+			}
+
+			detectedLang := translator.DetectLanguage(title)
+
+			// Already translated
+			if strings.TrimSpace(it.TranslatedTitle) != "" {
+				results[idx] = TranslateBatchResponseItem{
+					ID:              itemId,
+					OriginalTitle:   title,
+					TranslatedTitle: it.TranslatedTitle,
+					DetectedLang:    detectedLang,
+					Cached:          true,
+				}
+				return
+			}
+
+			contentHash := hashText(title)
+			cachedTranslation, err := h.store.GetCachedTranslation(contentHash)
+			if err == nil && cachedTranslation != "" {
+				_ = h.store.UpdateItemTranslatedTitle(userID, itemId, cachedTranslation)
+				results[idx] = TranslateBatchResponseItem{
+					ID:              itemId,
+					OriginalTitle:   title,
+					TranslatedTitle: cachedTranslation,
+					DetectedLang:    detectedLang,
+					Cached:          true,
+				}
+				return
+			}
+
+			translated, err := h.translator.TranslateTitle(c.Request.Context(), title)
+			if err == nil && translated != "" {
+				_ = h.store.UpdateItemTranslatedTitle(userID, itemId, translated)
+				_ = h.store.SetCachedTranslation(contentHash, detectedLang, title, translated)
+				results[idx] = TranslateBatchResponseItem{
+					ID:              itemId,
+					OriginalTitle:   title,
+					TranslatedTitle: translated,
+					DetectedLang:    detectedLang,
+					Cached:          false,
+				}
+			} else {
+				results[idx] = TranslateBatchResponseItem{
+					ID:              itemId,
+					OriginalTitle:   title,
+					TranslatedTitle: title,
+					DetectedLang:    detectedLang,
+					Cached:          false,
+				}
+			}
+		}(i, id)
+	}
+
+	wg.Wait()
+
+	validResults := make([]TranslateBatchResponseItem, 0, len(results))
+	for _, res := range results {
+		if res.ID > 0 {
+			validResults = append(validResults, res)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": validResults})
 }
