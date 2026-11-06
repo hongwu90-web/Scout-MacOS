@@ -68,3 +68,31 @@ func TestScoutSiteWithHTMLAlternate(t *testing.T) {
 		t.Errorf("expected 'Alternate RSS Feed', got %q", feeds[0].Title)
 	}
 }
+
+func TestParseFeedBodySanitizesControlCharsAndBOM(t *testing.T) {
+	rawXML := append([]byte{0xEF, 0xBB, 0xBF, '\n'}, []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>News - European Parliament`+"\x1d"+`</title>
+    <link>https://www.europarl.europa.eu/news/en</link>
+    <description />
+    <item>
+      <title>Agenda - The Week Ahead</title>
+      <link>https://www.europarl.europa.eu/news/en/agenda/weekly-agenda/2026-46</link>
+      <guid isPermaLink="false">AGD_AGD-2026-46-00-00000_EN</guid>
+    </item>
+  </channel>
+</rss>`)...)
+
+	feed, err := parseFeedBody(rawXML, "https://www.europarl.europa.eu/rss/doc/press-news/en.xml")
+	if err != nil {
+		t.Fatalf("parseFeedBody failed: %v", err)
+	}
+	if feed.Title != "News - European Parliament" {
+		t.Errorf("expected title 'News - European Parliament', got %q", feed.Title)
+	}
+	if feed.SiteURL != "https://www.europarl.europa.eu/news/en" {
+		t.Errorf("expected site_url 'https://www.europarl.europa.eu/news/en', got %q", feed.SiteURL)
+	}
+}
+

@@ -318,16 +318,8 @@ func extractNextLink(data []byte) string {
 	return ""
 }
 
-// sanitizeXMLBytes filters out illegal XML 1.0 control characters (e.g. 0x1D) that cause XML parsers to abort.
+// sanitizeXMLBytes filters out illegal XML 1.0 control characters (e.g. 0x1D) and UTF-8 BOM that cause XML parsers to abort.
 func sanitizeXMLBytes(raw []byte) []byte {
-	return bytes.Map(func(r rune) rune {
-		if r == 0x09 || r == 0x0A || r == 0x0D ||
-			(r >= 0x20 && r <= 0xD7FF) ||
-			(r >= 0xE000 && r <= 0xFFFD) ||
-			(r >= 0x10000 && r <= 0x10FFFF) {
-			return r
-		}
-		return -1
-	}, raw)
+	return httpc.SanitizeXMLBytes(raw)
 }
 

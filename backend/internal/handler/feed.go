@@ -274,7 +274,7 @@ func (h *Handler) validateFeed(c *gin.Context) {
 		return
 	}
 
-	target := strings.TrimSpace(req.URL)
+	target := normalizeFeedURL(req.URL)
 	allowPrivateFeeds := h.config != nil && h.config.AllowPrivateFeeds
 	if err := httpc.ValidateRequestURL(c.Request.Context(), target, allowPrivateFeeds); err != nil {
 		badRequestError(c, "invalid url")
@@ -376,7 +376,8 @@ func (h *Handler) parseFeedTitle(ctx context.Context, target string) (string, er
 		return "", errors.New("feed fetch failed")
 	}
 
-	parsedFeed, err := gofeed.NewParser().Parse(bytes.NewReader(payload.Body))
+	sanitized := httpc.SanitizeXMLBytes(payload.Body)
+	parsedFeed, err := gofeed.NewParser().Parse(bytes.NewReader(sanitized))
 	if err != nil {
 		return "", err
 	}

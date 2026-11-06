@@ -199,6 +199,10 @@ export function AddFeedDialog() {
       const feeds = response.data?.feeds ?? [];
 
       if (feeds.length === 0) {
+        if (/\.(xml|rss|atom)(\?.*)?$/i.test(cleanUrl)) {
+          toast.warning("Could not pre-validate this XML feed URL, but you can still enter a title and add it directly.");
+          return;
+        }
         setShowBuilder(true);
         toast.info("No standard RSS feed found. You can build a custom feed for this site below.");
         void handleBuildFeedAuto(cleanUrl);

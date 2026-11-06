@@ -57,12 +57,7 @@ func ScoutSite(ctx context.Context, rawTarget string, allowPrivate bool) ([]Disc
 		return nil, fmt.Errorf("create http client: %w", err)
 	}
 
-	// Step 1: Check if the provided URL is already a direct RSS/Atom feed
-	if feed, err := testAndParseFeed(ctx, client, target); err == nil && feed != nil {
-		return []DiscoveredFeed{*feed}, nil
-	}
-
-	// Step 2: Fetch target HTML page with fallback for anti-bot protection
+	// Step 1: Fetch target URL once with anti-bot fallback and check if it is already a direct RSS/Atom/JSON feed
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -74,9 +69,11 @@ func ScoutSite(ctx context.Context, rawTarget string, allowPrivate bool) ([]Disc
 		return nil, fmt.Errorf("fetch target page: %w", err)
 	}
 
-	// If the fetched payload turned out to be an XML feed directly
-	if feed, err := parseFeedBody(payload.Body, target); err == nil && feed != nil {
-		return []DiscoveredFeed{*feed}, nil
+	// If the fetched payload is a valid XML/JSON feed directly, return immediately
+	if payload.StatusCode == http.StatusOK {
+		if feed, err := parseFeedBody(payload.Body, target); err == nil && feed != nil {
+			return []DiscoveredFeed{*feed}, nil
+		}
 	}
 
 	// Step 3: Parse HTML and harvest candidates from <link> and <a> tags
@@ -147,6 +144,7 @@ func ScoutSite(ctx context.Context, rawTarget string, allowPrivate bool) ([]Disc
 		subReq, subErr := http.NewRequestWithContext(subCtx, http.MethodGet, dirPage, nil)
 		if subErr == nil {
 			httpc.SetDefaultHeaders(subReq)
+			subReq.Header.Set(httpc.HeaderNoRelay, "1")
 			if subPayload, err := httpc.DoWithFallback(subCtx, client, subReq); err == nil && subPayload.StatusCode == http.StatusOK {
 				if subDoc, err := goquery.NewDocumentFromReader(bytes.NewReader(subPayload.Body)); err == nil {
 					subBase, _ := url.Parse(dirPage)
@@ -214,6 +212,7 @@ func testAndParseFeed(ctx context.Context, client *http.Client, targetURL string
 		return nil, err
 	}
 	httpc.SetDefaultHeaders(req)
+	req.Header.Set(httpc.HeaderNoRelay, "1")
 
 	payload, err := httpc.DoWithFallback(ctx, client, req)
 	if err != nil {
@@ -227,12 +226,13 @@ func testAndParseFeed(ctx context.Context, client *http.Client, targetURL string
 }
 
 func parseFeedBody(body []byte, targetURL string) (*DiscoveredFeed, error) {
-	if len(body) == 0 {
+	sanitized := httpc.SanitizeXMLBytes(body)
+	if len(sanitized) == 0 {
 		return nil, fmt.Errorf("empty body")
 	}
 
 	fp := gofeed.NewParser()
-	parsed, err := fp.Parse(bytes.NewReader(body))
+	parsed, err := fp.Parse(bytes.NewReader(sanitized))
 	if err != nil || parsed == nil {
 		return nil, fmt.Errorf("not a valid feed: %w", err)
 	}
