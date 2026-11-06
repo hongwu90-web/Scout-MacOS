@@ -17,6 +17,7 @@ import { useSelectionStore } from "@/store/selection";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { usePreferencesStore } from "@/store";
+import { extractPositiveTerms } from "@/lib/focus-query";
 import type { Item } from "@/lib/api";
 
 interface ArticleListProps {
@@ -121,24 +122,12 @@ export function ArticleList({ matchedKeywords: propKeywords }: ArticleListProps 
     if (propKeywords && propKeywords.length > 0) return propKeywords;
     const kws: string[] = [];
     if (selectedFocusFeed?.keywords) {
-      try {
-        const parsed = JSON.parse(selectedFocusFeed.keywords);
-        if (Array.isArray(parsed)) {
-          kws.push(...parsed.filter((k: unknown): k is string => typeof k === "string"));
-        }
-      } catch {
-        kws.push(
-          ...selectedFocusFeed.keywords
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
-        );
-      }
+      kws.push(...extractPositiveTerms(selectedFocusFeed.keywords));
     }
     if (keywordQuery && keywordQuery.trim()) {
-      kws.push(keywordQuery.trim());
+      kws.push(...extractPositiveTerms(keywordQuery));
     }
-    return kws;
+    return Array.from(new Set(kws));
   }, [propKeywords, selectedFocusFeed?.keywords, keywordQuery]);
 
   useEffect(() => {

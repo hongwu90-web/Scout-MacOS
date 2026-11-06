@@ -101,6 +101,7 @@ export function useBookmarkLookup() {
 export interface StarredItemsResult {
   items: Item[];
   bookmarks: Bookmark[];
+  total: number;
   hasNextPage: boolean;
   isLoading: boolean;
   isFetchingNextPage: boolean;
@@ -140,6 +141,7 @@ export function useStarredItems(
   return {
     items,
     bookmarks,
+    total: query.data?.pages[0]?.total ?? bookmarks.length,
     hasNextPage: query.hasNextPage,
     isLoading: query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,

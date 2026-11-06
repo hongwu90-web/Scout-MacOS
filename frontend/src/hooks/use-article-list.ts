@@ -74,8 +74,13 @@ export function useArticleList(filters: ArticleListFilters) {
     [bookmarkByItemId],
   );
 
+  const totalCount = isStarredMode
+    ? starred.total
+    : (itemsQuery.data?.pages[0]?.total ?? articles.length);
+
   return {
     articles,
+    totalCount,
     hasMore: isStarredMode ? starred.hasNextPage : itemsQuery.hasNextPage,
     isLoading: isStarredMode ? starred.isLoading : itemsQuery.isLoading,
     isLoadingMore: isStarredMode

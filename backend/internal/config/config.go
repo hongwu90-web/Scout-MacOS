@@ -45,6 +45,9 @@ type Config struct {
 	CloudMonitorURL     string // URL of Cloudflare worker
 	CloudMonitorSecret  string // Secret key for Cloudflare worker sync
 
+	// Automatic retention policy: days after an article was read to auto-purge it (default: 7, 0 disables)
+	AutoPurgeReadDays int
+
 	// Standalone desktop mode (Scout macOS standalone app)
 	StandaloneDesktop bool
 }
@@ -124,6 +127,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	autoPurgeReadDays, err := getEnvInt("FUSION_AUTO_PURGE_READ_DAYS", 7, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	corsAllowedOrigins := parseCSVEnv(os.Getenv("FUSION_CORS_ALLOWED_ORIGINS"))
 	trustedProxies := parseCSVEnv(os.Getenv("FUSION_TRUSTED_PROXIES"))
 
@@ -176,6 +184,7 @@ func Load() (*Config, error) {
 		CloudMonitorEnabled: getEnvString("CLOUD_MONITOR_ENABLED", "false") == "true",
 		CloudMonitorURL:     strings.TrimRight(getEnvString("CLOUD_MONITOR_URL", ""), "/"),
 		CloudMonitorSecret:  getEnvString("CLOUD_MONITOR_SECRET", ""),
+		AutoPurgeReadDays:   autoPurgeReadDays,
 		StandaloneDesktop:   getEnvString("SCOUT_STANDALONE_DESKTOP", "false") == "true",
 	}, nil
 }

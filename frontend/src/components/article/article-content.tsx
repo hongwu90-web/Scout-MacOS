@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Item, Feed } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import { formatDate, cn } from "@/lib/utils";
 import { processArticleContent } from "@/lib/content";
 import { toSafeExternalUrl, openExternalUrl } from "@/lib/safe-url";
 import { useTranslateItemTitle } from "@/queries/items";
-import { Languages, Loader2 } from "lucide-react";
+import { Languages, Loader2, Star } from "lucide-react";
 import { toast } from "sonner";
 
 interface ArticleContentProps {
@@ -107,9 +107,16 @@ export function ArticleContent({
           )}
           <button
             onClick={onToggleStar}
-            className="flex items-center gap-1 text-[10px] uppercase font-bold border border-border hover:border-foreground/80 px-2 py-1 transition-colors bg-card text-foreground"
+            className={cn(
+              "flex items-center gap-1 text-[10px] uppercase font-bold border px-2 py-1 transition-colors bg-card",
+              starred
+                ? "text-amber-600 dark:text-amber-400 border-amber-500/40 dark:border-amber-500/50 bg-amber-500/10 dark:bg-amber-500/15 hover:bg-amber-500/20 shadow-2xs"
+                : "border-border hover:border-foreground/80 text-foreground",
+            )}
+            title={starred ? "Remove from starred" : "Star article"}
           >
-            {starred ? "[UNSTAR]" : "[STAR]"}
+            <Star className={cn("w-3 h-3", starred ? "fill-amber-500 text-amber-500" : "text-muted-foreground")} />
+            <span>{starred ? "[STARRED]" : "[STAR]"}</span>
           </button>
           <button
             onClick={handleTranslate}

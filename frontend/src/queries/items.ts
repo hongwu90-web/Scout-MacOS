@@ -16,6 +16,7 @@ import {
   type NormalizedItemFilters,
 } from "./keys";
 import { usePreferencesStore } from "@/store";
+import { extractPositiveTerms } from "@/lib/focus-query";
 import type { BookmarksInfiniteData } from "./bookmarks";
 
 type ItemListResponse = Awaited<ReturnType<typeof itemAPI.list>>;
@@ -194,10 +195,7 @@ function applyOptimisticItemReadState(
   if (focusFeeds && focusFeeds.length > 0 && updatedItemsById.size > 0) {
     qc.setQueryData(queryKeys.focusFeeds.list(), (old: FocusFeed[] | undefined) =>
       old?.map((ff) => {
-        const kws = ff.keywords
-          .split(/[,;\n]/)
-          .map((k) => k.trim().toLowerCase())
-          .filter(Boolean);
+        const kws = extractPositiveTerms(ff.keywords).map((k) => k.toLowerCase());
         const scopedFeedIds = ff.feed_ids
           ? ff.feed_ids.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0)
           : [];

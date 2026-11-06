@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/0x2E/fusion/internal/focusquery"
 	"github.com/0x2E/fusion/internal/model"
 )
 
@@ -38,7 +39,21 @@ func parseFeedIDs(feedIDsStr string) []int64 {
 	return result
 }
 
-func buildFocusFeedKeywordClause(keywords []string) (string, []any) {
+func buildFocusFeedKeywordClause(keywordsStr string) (string, []any) {
+	if strings.TrimSpace(keywordsStr) == "" {
+		return "", nil
+	}
+
+	ast, err := focusquery.Parse(keywordsStr)
+	if err == nil && ast != nil {
+		clause, args, err := focusquery.Compile(ast)
+		if err == nil && clause != "" {
+			return clause, args
+		}
+	}
+
+	// Fallback to legacy comma/newline-separated OR matching
+	keywords := parseKeywords(keywordsStr)
 	if len(keywords) == 0 {
 		return "", nil
 	}
@@ -80,8 +95,8 @@ func (s *Store) CreateFocusFeed(userID, groupID int64, name, keywords, feedIDs, 
 	return s.GetFocusFeed(userID, id)
 }
 
-// GetFocusFeed retrieves a focus feed by ID.
-func (s *Store) GetFocusFeed(userID, id int64) (*model.FocusFeed, error) {
+// getFocusFeedRow retrieves a focus feed by ID without running keyword count scans.
+func (s *Store) getFocusFeedRow(userID, id int64) (*model.FocusFeed, error) {
 	ff := &model.FocusFeed{}
 	err := s.db.QueryRow(`
 		SELECT id, user_id, group_id, name, keywords, feed_ids, icon, created_at, updated_at
@@ -96,11 +111,25 @@ func (s *Store) GetFocusFeed(userID, id int64) (*model.FocusFeed, error) {
 		}
 		return nil, err
 	}
+	return ff, nil
+}
 
-	// Compute unread and total items count in a single database pass
-	totalCount, unreadCount, _ := s.CountFocusFeedStats(userID, ff)
+// GetFocusFeedMetadata retrieves focus feed metadata without running unread count scans.
+func (s *Store) GetFocusFeedMetadata(userID, id int64) (*model.FocusFeed, error) {
+	return s.getFocusFeedRow(userID, id)
+}
+
+// GetFocusFeed retrieves a focus feed by ID with its unread item count.
+func (s *Store) GetFocusFeed(userID, id int64) (*model.FocusFeed, error) {
+	ff, err := s.getFocusFeedRow(userID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Compute unread count scanning only unread articles (unread = 1)
+	_, unreadCount, _ := s.CountFocusFeedStats(userID, ff)
 	ff.UnreadCount = unreadCount
-	ff.ItemCount = totalCount
+	ff.ItemCount = unreadCount
 
 	return ff, nil
 }
@@ -126,15 +155,20 @@ func (s *Store) ListFocusFeeds(userID int64) ([]*model.FocusFeed, error) {
 		); err != nil {
 			return nil, err
 		}
-
-		totalCount, unreadCount, _ := s.CountFocusFeedStats(userID, ff)
-		ff.UnreadCount = unreadCount
-		ff.ItemCount = totalCount
-
 		list = append(list, ff)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	_ = rows.Close()
 
-	return list, rows.Err()
+	for _, ff := range list {
+		_, unreadCount, _ := s.CountFocusFeedStats(userID, ff)
+		ff.UnreadCount = unreadCount
+		ff.ItemCount = unreadCount
+	}
+
+	return list, nil
 }
 
 // UpdateFocusFeed updates an existing focus feed.
@@ -194,14 +228,13 @@ func (s *Store) DeleteFocusFeed(userID, id int64) error {
 // ListFocusFeedItems retrieves matching paginated items for a given focus feed.
 func (s *Store) ListFocusFeedItems(userID int64, ff *model.FocusFeed, params ListItemsParams) ([]*model.Item, error) {
 	query := `
-		SELECT items.id, items.feed_id, items.guid, items.title, COALESCE(items.translated_title, ''), items.link, items.content, items.pub_date, items.unread, items.created_at
+		SELECT items.id, items.feed_id, items.guid, items.title, COALESCE(items.translated_title, ''), items.link, items.content, items.pub_date, items.unread, COALESCE(items.read_at, 0), items.created_at
 		FROM items
 		WHERE items.user_id = :user_id
 	`
 	args := []any{sql.Named("user_id", userID)}
 
-	keywords := parseKeywords(ff.Keywords)
-	kwClause, kwArgs := buildFocusFeedKeywordClause(keywords)
+	kwClause, kwArgs := buildFocusFeedKeywordClause(ff.Keywords)
 	query += kwClause
 	args = append(args, kwArgs...)
 
@@ -253,7 +286,7 @@ func (s *Store) ListFocusFeedItems(userID int64, ff *model.FocusFeed, params Lis
 	for rows.Next() {
 		i := &model.Item{}
 		var unread int
-		if err := rows.Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.TranslatedTitle, &i.Link, &i.Content, &i.PubDate, &unread, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.TranslatedTitle, &i.Link, &i.Content, &i.PubDate, &unread, &i.ReadAt, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		i.Unread = intToBool(unread)
@@ -263,13 +296,13 @@ func (s *Store) ListFocusFeedItems(userID int64, ff *model.FocusFeed, params Lis
 	return items, rows.Err()
 }
 
-// CountFocusFeedStats computes total and unread counts for a focus feed in a single query.
+// CountFocusFeedStats computes unread count for a focus feed scanning only unread articles.
+// Because it filters items.unread = 1, it leverages idx_items_user_unread_pubdate and skips all read articles.
 func (s *Store) CountFocusFeedStats(userID int64, ff *model.FocusFeed) (total int64, unread int64, err error) {
-	query := `SELECT COUNT(*), COALESCE(SUM(CASE WHEN items.unread = 1 THEN 1 ELSE 0 END), 0) FROM items WHERE items.user_id = :user_id`
+	query := `SELECT COUNT(*) FROM items WHERE items.user_id = :user_id AND items.unread = 1`
 	args := []any{sql.Named("user_id", userID)}
 
-	keywords := parseKeywords(ff.Keywords)
-	kwClause, kwArgs := buildFocusFeedKeywordClause(keywords)
+	kwClause, kwArgs := buildFocusFeedKeywordClause(ff.Keywords)
 	query += kwClause
 	args = append(args, kwArgs...)
 
@@ -284,8 +317,8 @@ func (s *Store) CountFocusFeedStats(userID int64, ff *model.FocusFeed) (total in
 		query += fmt.Sprintf(" AND items.feed_id IN (%s)", strings.Join(placeholders, ","))
 	}
 
-	err = s.db.QueryRow(query, args...).Scan(&total, &unread)
-	return total, unread, err
+	err = s.db.QueryRow(query, args...).Scan(&unread)
+	return unread, unread, err
 }
 
 // CountFocusFeedItems counts items matching the focus feed.
@@ -293,8 +326,7 @@ func (s *Store) CountFocusFeedItems(userID int64, ff *model.FocusFeed, unread *b
 	query := `SELECT COUNT(*) FROM items WHERE items.user_id = :user_id`
 	args := []any{sql.Named("user_id", userID)}
 
-	keywords := parseKeywords(ff.Keywords)
-	kwClause, kwArgs := buildFocusFeedKeywordClause(keywords)
+	kwClause, kwArgs := buildFocusFeedKeywordClause(ff.Keywords)
 	query += kwClause
 	args = append(args, kwArgs...)
 

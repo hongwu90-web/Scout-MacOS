@@ -27,6 +27,8 @@ import type {
   FocusFeed,
   CreateFocusFeedRequest,
   UpdateFocusFeedRequest,
+  PreviewFocusFeedRequest,
+  PreviewFocusFeedResponse,
   BatchCreateFeedsRequest,
   BatchCreateFeedsResponse,
   SearchResponse,
@@ -168,6 +170,9 @@ export const focusFeedAPI = {
     api.patch<APIResponse<FocusFeed>>(`/focus-feeds/${id}`, data),
 
   delete: (id: number) => api.delete<void>(`/focus-feeds/${id}`),
+
+  preview: (data: PreviewFocusFeedRequest) =>
+    api.post<APIResponse<PreviewFocusFeedResponse>>("/focus-feeds/preview", data),
 
   listItems: (id: number, params?: ListItemsParams) => {
     const query = new URLSearchParams();

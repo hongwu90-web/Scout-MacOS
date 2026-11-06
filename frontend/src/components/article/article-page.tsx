@@ -99,7 +99,7 @@ export function ArticlePage() {
     setKeywordQuery("");
   };
 
-  const { articles, isStarredMode, isItemStarred, getBookmarkByItemId } =
+  const { articles, totalCount, isStarredMode, isItemStarred, getBookmarkByItemId } =
     useArticleList({
       feedId: selectedFeedId,
       groupId: selectedGroupId,
@@ -432,6 +432,12 @@ export function ArticlePage() {
                 <Crosshair className="h-4 w-4 text-primary shrink-0" />
               )}
               <h2 className="truncate text-lg font-semibold">{title}</h2>
+              <span
+                className="font-mono text-[11px] font-bold px-2 py-0.5 rounded border border-border bg-muted/60 text-muted-foreground shrink-0"
+                title={`${totalCount} total ${totalCount === 1 ? "article" : "articles"}`}
+              >
+                {totalCount}
+              </span>
               {selectedFocusFeed && (
                 <span className="hidden sm:inline-flex text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
                   {selectedFocusFeed.keywords}
@@ -548,21 +554,21 @@ export function ArticlePage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {!selectedFocusFeed && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setIsPurgeModalOpen(true)}
-                    className="gap-1.5 text-xs"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {selectedFeed
-                      ? `Purge ${selectedFeed.name}`
-                      : selectedGroup
-                      ? `Purge ${selectedGroup.name}`
-                      : "Purge"}
-                  </Button>
-                )}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setIsPurgeModalOpen(true)}
+                  className="gap-1.5 text-xs"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {selectedFocusFeed
+                    ? `Purge ${selectedFocusFeed.name}`
+                    : selectedFeed
+                    ? `Purge ${selectedFeed.name}`
+                    : selectedGroup
+                    ? `Purge ${selectedGroup.name}`
+                    : "Purge"}
+                </Button>
 
                 <Button
                   variant="outline"
@@ -686,7 +692,7 @@ export function ArticlePage() {
           <DialogHeader>
             <DialogTitle>Purge Read Articles</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete all read articles from the database? This action cannot be undone.
+              Are you sure you want to delete read articles{selectedFocusFeed ? ` matching "${selectedFocusFeed.name}"` : selectedFeed ? ` from ${selectedFeed.name}` : selectedGroup ? ` in ${selectedGroup.name}` : ""} from the database? Bookmarked articles are always kept. Read articles are also automatically purged 7 days after being read.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

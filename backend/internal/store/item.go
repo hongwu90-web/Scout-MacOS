@@ -30,7 +30,7 @@ type ListItemsParams struct {
 
 func (s *Store) ListItems(userID int64, params ListItemsParams) ([]*model.Item, error) {
 	query := `
-		SELECT items.id, items.feed_id, items.guid, items.title, COALESCE(items.translated_title, ''), items.link, items.content, items.pub_date, items.unread, items.created_at
+		SELECT items.id, items.feed_id, items.guid, items.title, COALESCE(items.translated_title, ''), items.link, items.content, items.pub_date, items.unread, COALESCE(items.read_at, 0), items.created_at
 		FROM items
 	`
 	args := []any{}
@@ -89,7 +89,7 @@ func (s *Store) ListItems(userID int64, params ListItemsParams) ([]*model.Item, 
 	for rows.Next() {
 		i := &model.Item{}
 		var unread int
-		if err := rows.Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.TranslatedTitle, &i.Link, &i.Content, &i.PubDate, &unread, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.TranslatedTitle, &i.Link, &i.Content, &i.PubDate, &unread, &i.ReadAt, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		i.Unread = intToBool(unread)
@@ -102,10 +102,10 @@ func (s *Store) GetItem(userID int64, id int64) (*model.Item, error) {
 	i := &model.Item{}
 	var unread int
 	err := s.db.QueryRow(`
-		SELECT id, feed_id, guid, title, COALESCE(translated_title, ''), link, content, pub_date, unread, created_at
+		SELECT id, feed_id, guid, title, COALESCE(translated_title, ''), link, content, pub_date, unread, COALESCE(read_at, 0), created_at
 		FROM items
 		WHERE id = :id AND user_id = :user_id
-	`, sql.Named("id", id), sql.Named("user_id", userID)).Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.TranslatedTitle, &i.Link, &i.Content, &i.PubDate, &unread, &i.CreatedAt)
+	`, sql.Named("id", id), sql.Named("user_id", userID)).Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.TranslatedTitle, &i.Link, &i.Content, &i.PubDate, &unread, &i.ReadAt, &i.CreatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: item", ErrNotFound)
@@ -213,8 +213,16 @@ func (s *Store) BatchCreateItemsIgnore(userID int64, feedID int64, inputs []Batc
 }
 
 func (s *Store) UpdateItemUnread(userID int64, id int64, unread bool) error {
-	result, err := s.db.Exec(`UPDATE items SET unread = :unread WHERE id = :id AND user_id = :user_id`,
-		sql.Named("unread", boolToInt(unread)), sql.Named("id", id), sql.Named("user_id", userID))
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	var query string
+	if unread {
+		query = `UPDATE items SET unread = 1, read_at = 0 WHERE id = :id AND user_id = :user_id`
+	} else {
+		query = `UPDATE items SET unread = 0, read_at = unixepoch() WHERE id = :id AND user_id = :user_id`
+	}
+	result, err := s.db.Exec(query, sql.Named("id", id), sql.Named("user_id", userID))
 	if err != nil {
 		return err
 	}
@@ -252,16 +260,24 @@ func (s *Store) batchUpdateItemsUnreadChunk(userID int64, ids []int64, unread bo
 		return nil
 	}
 
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	placeholders := make([]string, len(ids))
-	args := make([]any, 0, len(ids)+2)
-	args = append(args, sql.Named("unread", boolToInt(unread)), sql.Named("user_id", userID))
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, sql.Named("user_id", userID))
 	for i, id := range ids {
 		paramName := fmt.Sprintf("id%d", i)
 		placeholders[i] = ":" + paramName
 		args = append(args, sql.Named(paramName, id))
 	}
 
-	query := fmt.Sprintf(`UPDATE items SET unread = :unread WHERE id IN (%s) AND user_id = :user_id`, strings.Join(placeholders, ","))
+	var query string
+	if unread {
+		query = fmt.Sprintf(`UPDATE items SET unread = 1, read_at = 0 WHERE id IN (%s) AND user_id = :user_id AND unread = 0`, strings.Join(placeholders, ","))
+	} else {
+		query = fmt.Sprintf(`UPDATE items SET unread = 0, read_at = unixepoch() WHERE id IN (%s) AND user_id = :user_id AND unread = 1`, strings.Join(placeholders, ","))
+	}
 	_, err := s.db.Exec(query, args...)
 	return err
 }
@@ -269,56 +285,71 @@ func (s *Store) batchUpdateItemsUnreadChunk(userID int64, ids []int64, unread bo
 // MarkAllAsRead marks items as read. If feedID is nil, marks ALL items across all feeds.
 // If feedID is non-nil, only marks items from that specific feed.
 func (s *Store) MarkAllAsRead(userID int64, feedID *int64) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	if feedID != nil {
-		_, err := s.db.Exec(`UPDATE items SET unread = 0 WHERE feed_id = :feed_id AND user_id = :user_id`, sql.Named("feed_id", *feedID), sql.Named("user_id", userID))
+		_, err := s.db.Exec(`UPDATE items SET unread = 0, read_at = unixepoch() WHERE feed_id = :feed_id AND user_id = :user_id AND unread = 1`, sql.Named("feed_id", *feedID), sql.Named("user_id", userID))
 		return err
 	}
-	_, err := s.db.Exec(`UPDATE items SET unread = 0 WHERE user_id = :user_id`, sql.Named("user_id", userID))
+	_, err := s.db.Exec(`UPDATE items SET unread = 0, read_at = unixepoch() WHERE user_id = :user_id AND unread = 1`, sql.Named("user_id", userID))
 	return err
 }
 
 func (s *Store) MarkGroupAsRead(userID int64, groupID int64) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	_, err := s.db.Exec(`
 		UPDATE items
-		SET unread = 0
+		SET unread = 0, read_at = unixepoch()
 		WHERE feed_id IN (
 			SELECT id
 			FROM feeds
 			WHERE group_id = :group_id AND user_id = :user_id
-		) AND user_id = :user_id
+		) AND user_id = :user_id AND unread = 1
 	`, sql.Named("group_id", groupID), sql.Named("user_id", userID))
 	return err
 }
 
 func (s *Store) MarkFeedAsReadBefore(userID int64, feedID, before int64) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	_, err := s.db.Exec(`
 		UPDATE items
-		SET unread = 0
-		WHERE feed_id = :feed_id AND user_id = :user_id
+		SET unread = 0, read_at = unixepoch()
+		WHERE feed_id = :feed_id AND user_id = :user_id AND unread = 1
 		  AND (CASE WHEN pub_date > 0 THEN pub_date ELSE created_at END) <= :before
 	`, sql.Named("feed_id", feedID), sql.Named("user_id", userID), sql.Named("before", before))
 	return err
 }
 
 func (s *Store) MarkGroupAsReadBefore(userID int64, groupID, before int64) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	_, err := s.db.Exec(`
 		UPDATE items
-		SET unread = 0
+		SET unread = 0, read_at = unixepoch()
 		WHERE feed_id IN (
 			SELECT id
 			FROM feeds
 			WHERE group_id = :group_id AND user_id = :user_id
-		) AND user_id = :user_id
+		) AND user_id = :user_id AND unread = 1
 		  AND (CASE WHEN pub_date > 0 THEN pub_date ELSE created_at END) <= :before
 	`, sql.Named("group_id", groupID), sql.Named("user_id", userID), sql.Named("before", before))
 	return err
 }
 
 func (s *Store) MarkAllAsReadBefore(userID int64, before int64) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	_, err := s.db.Exec(`
 		UPDATE items
-		SET unread = 0
-		WHERE user_id = :user_id AND (CASE WHEN pub_date > 0 THEN pub_date ELSE created_at END) <= :before
+		SET unread = 0, read_at = unixepoch()
+		WHERE user_id = :user_id AND unread = 1 AND (CASE WHEN pub_date > 0 THEN pub_date ELSE created_at END) <= :before
 	`, sql.Named("user_id", userID), sql.Named("before", before))
 	return err
 }
@@ -580,16 +611,18 @@ func (s *Store) CountItems(userID int64, params ListItemsParams) (int, error) {
 
 // MarkItemsReadByDate marks items as read based on feed/group/focus_feed and publication date.
 func (s *Store) MarkItemsReadByDate(userID int64, feedID, groupID, focusFeedID *int64, beforePubDate *int64) error {
-	query := `UPDATE items SET unread = 0 WHERE unread = 1 AND user_id = :user_id`
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	query := `UPDATE items SET unread = 0, read_at = unixepoch() WHERE unread = 1 AND user_id = :user_id`
 	args := []any{sql.Named("user_id", userID)}
 
 	if focusFeedID != nil {
-		ff, err := s.GetFocusFeed(userID, *focusFeedID)
+		ff, err := s.getFocusFeedRow(userID, *focusFeedID)
 		if err != nil {
 			return err
 		}
-		keywords := parseKeywords(ff.Keywords)
-		kwClause, kwArgs := buildFocusFeedKeywordClause(keywords)
+		kwClause, kwArgs := buildFocusFeedKeywordClause(ff.Keywords)
 		query += kwClause
 		args = append(args, kwArgs...)
 
@@ -641,27 +674,18 @@ func (s *Store) DeleteReadItems(userID int64, feedID, groupID, focusFeedID *int6
 	}
 	defer tx.Rollback()
 
-	whereClause := "WHERE i.unread = 0 AND i.user_id = :user_id AND i.id NOT IN (SELECT item_id FROM bookmarks WHERE item_id IS NOT NULL AND user_id = :user_id)"
+	whereClause := "WHERE items.unread = 0 AND items.user_id = :user_id AND items.id NOT IN (SELECT item_id FROM bookmarks WHERE item_id IS NOT NULL AND user_id = :user_id) AND items.link NOT IN (SELECT link FROM bookmarks WHERE user_id = :user_id)"
 	args := []any{sql.Named("user_id", userID)}
 
 	if focusFeedID != nil {
-		ff, err := s.GetFocusFeed(userID, *focusFeedID)
+		ff, err := s.getFocusFeedRow(userID, *focusFeedID)
 		if err != nil {
 			return 0, nil, err
 		}
-		keywords := parseKeywords(ff.Keywords)
-		if len(keywords) > 0 {
-			var clauses []string
-			for idx, kw := range keywords {
-				paramName := fmt.Sprintf("ff_purge_kw_%d", idx)
-				clauses = append(clauses, fmt.Sprintf(
-					"(i.title LIKE :%s OR i.translated_title LIKE :%s OR i.content LIKE :%s)",
-					paramName, paramName, paramName,
-				))
-				args = append(args, sql.Named(paramName, "%"+kw+"%"))
-			}
-			whereClause += " AND (" + strings.Join(clauses, " OR ") + ")"
-		}
+		kwClause, kwArgs := buildFocusFeedKeywordClause(ff.Keywords)
+		whereClause += kwClause
+		args = append(args, kwArgs...)
+
 		feedIDs := parseFeedIDs(ff.FeedIDs)
 		if len(feedIDs) > 0 {
 			var placeholders []string
@@ -670,22 +694,22 @@ func (s *Store) DeleteReadItems(userID int64, feedID, groupID, focusFeedID *int6
 				placeholders = append(placeholders, ":"+name)
 				args = append(args, sql.Named(name, fid))
 			}
-			whereClause += fmt.Sprintf(" AND i.feed_id IN (%s)", strings.Join(placeholders, ","))
+			whereClause += fmt.Sprintf(" AND items.feed_id IN (%s)", strings.Join(placeholders, ","))
 		}
 	}
 
 	if groupID != nil {
-		whereClause += " AND i.feed_id IN (SELECT id FROM feeds WHERE group_id = :group_id AND user_id = :user_id)"
+		whereClause += " AND items.feed_id IN (SELECT id FROM feeds WHERE group_id = :group_id AND user_id = :user_id)"
 		args = append(args, sql.Named("group_id", *groupID))
 	}
 
 	if feedID != nil {
-		whereClause += " AND i.feed_id = :feed_id"
+		whereClause += " AND items.feed_id = :feed_id"
 		args = append(args, sql.Named("feed_id", *feedID))
 	}
 
 	// 1. Collect items to be purged
-	rows, err := tx.Query("SELECT i.feed_id, i.guid FROM items i "+whereClause, args...)
+	rows, err := tx.Query("SELECT items.feed_id, items.guid FROM items "+whereClause, args...)
 	if err != nil {
 		return 0, nil, fmt.Errorf("query items to purge: %w", err)
 	}
@@ -727,7 +751,7 @@ func (s *Store) DeleteReadItems(userID int64, feedID, groupID, focusFeedID *int6
 	}
 
 	// 3. Delete matching read items from items table
-	deleteQuery := "DELETE FROM items WHERE id IN (SELECT i.id FROM items i " + whereClause + ")"
+	deleteQuery := "DELETE FROM items WHERE id IN (SELECT items.id FROM items " + whereClause + ")"
 	delRes, err := tx.Exec(deleteQuery, args...)
 	if err != nil {
 		return 0, nil, fmt.Errorf("delete items: %w", err)
@@ -742,6 +766,99 @@ func (s *Store) DeleteReadItems(userID int64, feedID, groupID, focusFeedID *int6
 	cutoff := now - 90*86400
 	_, _ = tx.Exec("DELETE FROM purged_items WHERE user_id = :user_id AND purged_at < :cutoff",
 		sql.Named("user_id", userID), sql.Named("cutoff", cutoff))
+
+	if err := tx.Commit(); err != nil {
+		return 0, nil, err
+	}
+
+	return affected, purged, nil
+}
+
+// PurgeExpiredReadItems purges read items where read_at (or created_at if read_at is 0)
+// is older than olderThanSeconds. Bookmarked items (by item_id or link) are strictly preserved.
+// Purged items are recorded in purged_items so they are not re-ingested.
+func (s *Store) PurgeExpiredReadItems(userID int64, olderThanSeconds int64) (int64, []PurgedItemRecord, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, nil, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().Unix()
+	cutoff := now - olderThanSeconds
+
+	whereClause := `
+		WHERE items.unread = 0
+		  AND items.user_id = :user_id
+		  AND (CASE WHEN items.read_at > 0 THEN items.read_at ELSE items.created_at END) <= :cutoff
+		  AND items.id NOT IN (SELECT item_id FROM bookmarks WHERE item_id IS NOT NULL AND user_id = :user_id)
+		  AND items.link NOT IN (SELECT link FROM bookmarks WHERE user_id = :user_id)
+	`
+	args := []any{
+		sql.Named("user_id", userID),
+		sql.Named("cutoff", cutoff),
+	}
+
+	// 1. Collect items to be purged
+	rows, err := tx.Query("SELECT items.feed_id, items.guid FROM items "+whereClause, args...)
+	if err != nil {
+		return 0, nil, fmt.Errorf("query expired read items to purge: %w", err)
+	}
+	var purged []PurgedItemRecord
+	for rows.Next() {
+		var rec PurgedItemRecord
+		if err := rows.Scan(&rec.FeedID, &rec.GUID); err != nil {
+			rows.Close()
+			return 0, nil, err
+		}
+		purged = append(purged, rec)
+	}
+	rows.Close()
+
+	if len(purged) == 0 {
+		return 0, nil, nil
+	}
+
+	// 2. Insert tombstones into purged_items
+	insertTombstoneStmt, err := tx.Prepare(`
+		INSERT OR IGNORE INTO purged_items (user_id, feed_id, guid, purged_at)
+		VALUES (:user_id, :feed_id, :guid, :purged_at)
+	`)
+	if err != nil {
+		return 0, nil, fmt.Errorf("prepare tombstone statement: %w", err)
+	}
+	defer insertTombstoneStmt.Close()
+
+	for _, rec := range purged {
+		if _, err := insertTombstoneStmt.Exec(
+			sql.Named("user_id", userID),
+			sql.Named("feed_id", rec.FeedID),
+			sql.Named("guid", rec.GUID),
+			sql.Named("purged_at", now),
+		); err != nil {
+			return 0, nil, fmt.Errorf("insert tombstone: %w", err)
+		}
+	}
+
+	// 3. Delete matching read items from items table
+	deleteQuery := "DELETE FROM items WHERE id IN (SELECT items.id FROM items " + whereClause + ")"
+	delRes, err := tx.Exec(deleteQuery, args...)
+	if err != nil {
+		return 0, nil, fmt.Errorf("delete expired read items: %w", err)
+	}
+
+	affected, err := delRes.RowsAffected()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	// 4. Prune very old tombstones (> 90 days) during purge
+	tombstoneCutoff := now - 90*86400
+	_, _ = tx.Exec("DELETE FROM purged_items WHERE user_id = :user_id AND purged_at < :cutoff",
+		sql.Named("user_id", userID), sql.Named("cutoff", tombstoneCutoff))
 
 	if err := tx.Commit(); err != nil {
 		return 0, nil, err

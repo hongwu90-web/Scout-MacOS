@@ -60,8 +60,14 @@ func (p *Puller) Start(ctx context.Context) error {
 	// Run direct local fetch immediately on startup for all active feeds
 	_, _ = p.RefreshAll(ctx)
 
+	// Run initial expired read items auto-purge on startup
+	_, _ = p.PurgeExpiredReadItems(ctx)
+
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
+
+	purgeTicker := time.NewTicker(1 * time.Hour)
+	defer purgeTicker.Stop()
 
 	var cloudTicker *time.Ticker
 	var cloudChan <-chan time.Time
@@ -78,6 +84,8 @@ func (p *Puller) Start(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			p.pullAll(ctx)
+		case <-purgeTicker.C:
+			_, _ = p.PurgeExpiredReadItems(ctx)
 		case <-cloudChan:
 			if p.cloudSync != nil && p.cloudSync.IsEnabled() {
 				if _, err := p.cloudSync.FullSync(ctx, 1); err != nil {
@@ -362,4 +370,32 @@ func (p *Puller) RefreshFeed(ctx context.Context, userID, feedID int64) error {
 
 	p.pullFeed(ctx, feed)
 	return nil
+}
+
+// PurgeExpiredReadItems purges read items that have exceeded the retention threshold.
+func (p *Puller) PurgeExpiredReadItems(ctx context.Context) (int64, error) {
+	if p.config.AutoPurgeReadDays <= 0 {
+		return 0, nil
+	}
+
+	olderThanSeconds := int64(p.config.AutoPurgeReadDays) * 86400
+	userID := int64(1)
+
+	purgedCount, tombstones, err := p.store.PurgeExpiredReadItems(userID, olderThanSeconds)
+	if err != nil {
+		p.logger.Error("failed to auto-purge expired read items", "error", err)
+		return 0, err
+	}
+
+	if purgedCount > 0 {
+		p.logger.Info("auto-purged expired read items", "count", purgedCount, "older_than_days", p.config.AutoPurgeReadDays)
+
+		if p.cloudSync != nil && p.cloudSync.IsEnabled() && len(tombstones) > 0 {
+			if err := p.cloudSync.PurgeCloudFeedItems(ctx, userID, nil, nil, tombstones); err != nil {
+				p.logger.Warn("failed to sync purged read items with cloud monitor", "error", err)
+			}
+		}
+	}
+
+	return purgedCount, nil
 }

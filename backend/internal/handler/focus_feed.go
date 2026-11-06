@@ -5,10 +5,25 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/0x2E/fusion/internal/focusquery"
+	"github.com/0x2E/fusion/internal/model"
 	"github.com/0x2E/fusion/internal/store"
 	"github.com/gin-gonic/gin"
 )
+
+type previewFocusFeedRequest struct {
+	Keywords string `json:"keywords"`
+	FeedIDs  string `json:"feed_ids"`
+}
+
+type previewFocusFeedResponse struct {
+	Valid        bool     `json:"valid"`
+	Error        string   `json:"error,omitempty"`
+	MatchedCount int64    `json:"matched_count"`
+	LeafKeywords []string `json:"leaf_keywords"`
+}
 
 type createFocusFeedRequest struct {
 	Name     string `json:"name" binding:"required"`
@@ -130,7 +145,7 @@ func (h *Handler) listFocusFeedItems(c *gin.Context) {
 		return
 	}
 
-	ff, err := h.store.GetFocusFeed(userID, id)
+	ff, err := h.store.GetFocusFeedMetadata(userID, id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			notFoundError(c, "focus feed not found")
@@ -207,3 +222,52 @@ func (h *Handler) listFocusFeedItems(c *gin.Context) {
 
 	paginatedListResponse(c, items, int(total), nextCursor)
 }
+
+func (h *Handler) previewFocusFeed(c *gin.Context) {
+	userID := getUserID(c)
+	var req previewFocusFeedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequestError(c, err.Error())
+		return
+	}
+
+	trimmed := strings.TrimSpace(req.Keywords)
+	if trimmed == "" {
+		dataResponse(c, previewFocusFeedResponse{
+			Valid:        true,
+			MatchedCount: 0,
+			LeafKeywords: []string{},
+		})
+		return
+	}
+
+	ast, err := focusquery.Parse(trimmed)
+	if err != nil {
+		dataResponse(c, previewFocusFeedResponse{
+			Valid:        false,
+			Error:        err.Error(),
+			MatchedCount: 0,
+			LeafKeywords: []string{},
+		})
+		return
+	}
+
+	leafTerms := focusquery.ExtractPositiveTerms(ast)
+	mockFF := &model.FocusFeed{
+		Keywords: trimmed,
+		FeedIDs:  req.FeedIDs,
+	}
+
+	matchedCount, err := h.store.CountFocusFeedItems(userID, mockFF, nil)
+	if err != nil {
+		internalError(c, err, "preview focus feed count")
+		return
+	}
+
+	dataResponse(c, previewFocusFeedResponse{
+		Valid:        true,
+		MatchedCount: matchedCount,
+		LeafKeywords: leafTerms,
+	})
+}
+

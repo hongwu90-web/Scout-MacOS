@@ -18,16 +18,10 @@ func (s *Store) ListAllFeeds() ([]*model.Feed, error) {
 		       COALESCE(fs.expires_at, 0), COALESCE(fs.last_checked_at, 0), COALESCE(fs.next_check_at, 0),
 		       COALESCE(fs.last_http_status, 0), COALESCE(fs.retry_after_until, 0), COALESCE(fs.last_success_at, 0),
 		       COALESCE(fs.last_error_at, 0), COALESCE(fs.last_error, ''), COALESCE(fs.consecutive_failures, 0),
-		       COALESCE(SUM(CASE WHEN i.unread = 1 THEN 1 ELSE 0 END), 0) AS unread_count,
-		       COALESCE(COUNT(i.id), 0) AS item_count
+		       0 AS unread_count,
+		       0 AS item_count
 		FROM feeds f
 		LEFT JOIN feed_fetch_state fs ON fs.feed_id = f.id
-		LEFT JOIN items i ON i.feed_id = f.id AND i.user_id = f.user_id
-		GROUP BY f.id, f.user_id, f.group_id, f.name, f.link, f.site_url,
-		         f.suspended, f.proxy, f.created_at, f.updated_at,
-		         fs.etag, fs.last_modified, fs.cache_control, fs.expires_at, fs.last_checked_at,
-		         fs.next_check_at, fs.last_http_status, fs.retry_after_until, fs.last_success_at,
-		         fs.last_error_at, fs.last_error, fs.consecutive_failures
 		ORDER BY f.id
 	`)
 	if err != nil {
@@ -62,17 +56,19 @@ func (s *Store) ListFeeds(userID int64) ([]*model.Feed, error) {
 		       COALESCE(fs.expires_at, 0), COALESCE(fs.last_checked_at, 0), COALESCE(fs.next_check_at, 0),
 		       COALESCE(fs.last_http_status, 0), COALESCE(fs.retry_after_until, 0), COALESCE(fs.last_success_at, 0),
 		       COALESCE(fs.last_error_at, 0), COALESCE(fs.last_error, ''), COALESCE(fs.consecutive_failures, 0),
-		       COALESCE(SUM(CASE WHEN i.unread = 1 THEN 1 ELSE 0 END), 0) AS unread_count,
-		       COALESCE(COUNT(i.id), 0) AS item_count
+		       COALESCE(ic.unread_count, 0) AS unread_count,
+		       COALESCE(ic.item_count, 0) AS item_count
 		FROM feeds f
 		LEFT JOIN feed_fetch_state fs ON fs.feed_id = f.id
-		LEFT JOIN items i ON i.feed_id = f.id AND i.user_id = :user_id
+		LEFT JOIN (
+			SELECT feed_id,
+			       SUM(CASE WHEN unread = 1 THEN 1 ELSE 0 END) AS unread_count,
+			       COUNT(*) AS item_count
+			FROM items
+			WHERE user_id = :user_id
+			GROUP BY feed_id
+		) ic ON ic.feed_id = f.id
 		WHERE f.user_id = :user_id
-		GROUP BY f.id, f.group_id, f.name, f.link, f.site_url,
-		         f.suspended, f.proxy, f.created_at, f.updated_at,
-		         fs.etag, fs.last_modified, fs.cache_control, fs.expires_at, fs.last_checked_at,
-		         fs.next_check_at, fs.last_http_status, fs.retry_after_until, fs.last_success_at,
-		         fs.last_error_at, fs.last_error, fs.consecutive_failures
 		ORDER BY f.id
 	`, sql.Named("user_id", userID))
 	if err != nil {

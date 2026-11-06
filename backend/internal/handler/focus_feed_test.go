@@ -28,10 +28,44 @@ func TestFocusFeedEndpoints(t *testing.T) {
 	r := newTestRouter()
 	r.GET("/api/focus-feeds", h.listFocusFeeds)
 	r.POST("/api/focus-feeds", h.createFocusFeed)
+	r.POST("/api/focus-feeds/preview", h.previewFocusFeed)
 	r.GET("/api/focus-feeds/:id", h.getFocusFeed)
 	r.PATCH("/api/focus-feeds/:id", h.updateFocusFeed)
 	r.DELETE("/api/focus-feeds/:id", h.deleteFocusFeed)
 	r.GET("/api/focus-feeds/:id/items", h.listFocusFeedItems)
+
+	// 0. Preview Focus Feed
+	previewPayload := map[string]any{
+		"keywords": "TSMC AND chip",
+	}
+	w := performRequest(r, http.MethodPost, "/api/focus-feeds/preview", mustJSONBody(t, previewPayload), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for preview, got %d: %s", w.Code, w.Body.String())
+	}
+	var previewResp struct {
+		Data previewFocusFeedResponse `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &previewResp); err != nil {
+		t.Fatalf("unmarshal preview response: %v", err)
+	}
+	if !previewResp.Data.Valid || previewResp.Data.MatchedCount != 1 || len(previewResp.Data.LeafKeywords) != 2 {
+		t.Errorf("unexpected preview response: %+v", previewResp.Data)
+	}
+
+	// Preview with invalid query
+	invalidPayload := map[string]any{
+		"keywords": "(TSMC AND",
+	}
+	w = performRequest(r, http.MethodPost, "/api/focus-feeds/preview", mustJSONBody(t, invalidPayload), nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for preview error handling, got %d", w.Code)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &previewResp); err != nil {
+		t.Fatalf("unmarshal invalid preview response: %v", err)
+	}
+	if previewResp.Data.Valid || previewResp.Data.Error == "" {
+		t.Errorf("expected preview validation error, got %+v", previewResp.Data)
+	}
 
 	// 1. Create Focus Feed
 	createPayload := map[string]any{
@@ -40,7 +74,7 @@ func TestFocusFeedEndpoints(t *testing.T) {
 		"group_id": group.ID,
 		"icon":     "cpu",
 	}
-	w := performRequest(r, http.MethodPost, "/api/focus-feeds", mustJSONBody(t, createPayload), nil)
+	w = performRequest(r, http.MethodPost, "/api/focus-feeds", mustJSONBody(t, createPayload), nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
 	}

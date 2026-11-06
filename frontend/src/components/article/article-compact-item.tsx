@@ -174,11 +174,13 @@ export function ArticleCompactItem({
             onClick={handleToggleStar}
             className={cn(
               "p-1 rounded hover:bg-background border border-border text-muted-foreground hover:text-foreground transition-colors",
-              isStarred && "text-amber-500 hover:text-amber-600 border-amber-500/30",
+              isStarred
+                ? "text-amber-600 dark:text-amber-400 border-amber-500/40 dark:border-amber-500/50 bg-amber-500/10 dark:bg-amber-500/15 hover:bg-amber-500/20 shadow-2xs"
+                : "",
             )}
-            title={isStarred ? "Unstar" : "Star"}
+            title={isStarred ? "Remove from starred" : "Star article"}
           >
-            <Star className={cn("w-3 h-3", isStarred && "fill-amber-500")} />
+            <Star className={cn("w-3 h-3", isStarred ? "fill-amber-500 text-amber-500" : "text-muted-foreground")} />
           </button>
         </div>
 

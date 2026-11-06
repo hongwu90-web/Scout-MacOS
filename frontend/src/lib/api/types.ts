@@ -238,6 +238,18 @@ export interface UpdateFocusFeedRequest {
   icon?: string;
 }
 
+export interface PreviewFocusFeedRequest {
+  keywords: string;
+  feed_ids?: string;
+}
+
+export interface PreviewFocusFeedResponse {
+  valid: boolean;
+  error?: string;
+  matched_count: number;
+  leaf_keywords: string[];
+}
+
 export interface ListItemsParams {
   feed_id?: number;
   group_id?: number;

@@ -206,6 +206,7 @@ func (h *Handler) SetupRouter() *gin.Engine {
 			// Focus Feeds (Keyword Focus)
 			auth.GET("/focus-feeds", h.listFocusFeeds)
 			auth.POST("/focus-feeds", h.createFocusFeed)
+			auth.POST("/focus-feeds/preview", h.previewFocusFeed)
 			auth.GET("/focus-feeds/:id", h.getFocusFeed)
 			auth.PATCH("/focus-feeds/:id", h.updateFocusFeed)
 			auth.DELETE("/focus-feeds/:id", h.deleteFocusFeed)

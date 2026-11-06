@@ -265,7 +265,9 @@ func (c *CloudFeedSync) PurgeCloudFeedItems(ctx context.Context, userID int64, f
 	}
 
 	if feedID == nil && groupID == nil {
-		payload.PurgeAll = true
+		if len(purgedItems) == 0 {
+			payload.PurgeAll = true
+		}
 	} else if groupID != nil {
 		feeds, err := c.store.ListFeeds(userID)
 		if err == nil {

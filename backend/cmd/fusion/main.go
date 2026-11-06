@@ -63,6 +63,7 @@ func run() error {
 			return err
 		}
 		slog.Info("pull-once completed successfully", "feeds_refreshed", count)
+		_, _ = puller.PurgeExpiredReadItems(ctx)
 		return nil
 	}
 

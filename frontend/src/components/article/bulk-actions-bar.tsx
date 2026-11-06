@@ -311,7 +311,7 @@ export function BulkActionsBar({
             onClick={handleToggleStar}
             className={cn(
               "p-1.5 rounded-full hover:bg-accent/60 transition-colors disabled:opacity-40",
-              allStarred ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
+              allStarred ? "text-amber-600 dark:text-amber-400 bg-amber-500/10" : "text-muted-foreground hover:text-foreground",
             )}
             title={allStarred ? "Unstar selected" : "Star selected"}
           >

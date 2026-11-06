@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { cn, formatDate, extractSummary } from "@/lib/utils";
 import type { Item } from "@/lib/api";
 import { useTranslateItemTitle } from "@/queries/items";
-import { Languages, Loader2 } from "lucide-react";
+import { Languages, Loader2, Star } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 
@@ -205,9 +205,16 @@ export function ArticleItem({
           )}
           <button
             onClick={handleToggleStar}
-            className="text-muted-foreground hover:text-foreground border border-border hover:border-foreground/80 bg-background px-1.5 py-0.5 transition-colors font-bold uppercase"
+            className={cn(
+              "flex items-center gap-1 border px-1.5 py-0.5 transition-colors font-bold uppercase",
+              isStarred
+                ? "text-amber-600 dark:text-amber-400 border-amber-500/40 dark:border-amber-500/50 bg-amber-500/10 dark:bg-amber-500/15 hover:bg-amber-500/20 shadow-2xs"
+                : "text-muted-foreground hover:text-foreground border-border hover:border-foreground/80 bg-background",
+            )}
+            title={isStarred ? "Remove from starred" : "Star article"}
           >
-            {isStarred ? "[UNSTAR]" : "[STAR]"}
+            <Star className={cn("w-2.5 h-2.5", isStarred ? "fill-amber-500 text-amber-500" : "text-muted-foreground")} />
+            <span>{isStarred ? "[STARRED]" : "[STAR]"}</span>
           </button>
           <button
             onClick={handleTranslate}

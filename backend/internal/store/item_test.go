@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestListItems(t *testing.T) {
@@ -746,6 +747,152 @@ func TestDeleteReadItems_PreventsReingestion(t *testing.T) {
 		if it.GUID == "item-1" {
 			t.Fatalf("CRITICAL ERROR: purged item-1 was re-ingested into items table!")
 		}
+	}
+}
+
+func TestPurgeExpiredReadItems(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	group := mustCreateGroup(t, store, "Test Group")
+	feed := mustCreateFeed(t, store, group.ID, "Feed 1", "https://example.com/feed", "https://example.com", "")
+
+	// 1. Expired read item (read 10 days ago) -> should be purged
+	itemExpired := mustCreateItem(t, store, feed.ID, "guid-expired", "Expired Item", "https://example.com/expired", "Content", 100)
+	tenDaysAgo := time.Now().Unix() - 10*86400
+	_, err := store.db.Exec("UPDATE items SET unread = 0, read_at = :read_at WHERE id = :id",
+		sql.Named("read_at", tenDaysAgo), sql.Named("id", itemExpired.ID))
+	if err != nil {
+		t.Fatalf("failed setting read_at: %v", err)
+	}
+
+	// 2. Recent read item (read 2 days ago) -> should NOT be purged
+	itemRecent := mustCreateItem(t, store, feed.ID, "guid-recent", "Recent Read Item", "https://example.com/recent", "Content", 200)
+	twoDaysAgo := time.Now().Unix() - 2*86400
+	_, err = store.db.Exec("UPDATE items SET unread = 0, read_at = :read_at WHERE id = :id",
+		sql.Named("read_at", twoDaysAgo), sql.Named("id", itemRecent.ID))
+	if err != nil {
+		t.Fatalf("failed setting read_at: %v", err)
+	}
+
+	// 3. Old unread item (created 10 days ago, unread=1) -> should NOT be purged
+	itemUnread := mustCreateItem(t, store, feed.ID, "guid-unread", "Old Unread Item", "https://example.com/unread", "Content", 100)
+	_, err = store.db.Exec("UPDATE items SET created_at = :created_at WHERE id = :id",
+		sql.Named("created_at", tenDaysAgo), sql.Named("id", itemUnread.ID))
+	if err != nil {
+		t.Fatalf("failed setting created_at: %v", err)
+	}
+
+	// 4. Old read item with bookmark by item_id -> should NOT be purged
+	itemBookmarked := mustCreateItem(t, store, feed.ID, "guid-bookmarked", "Bookmarked Item", "https://example.com/bookmarked", "Content", 100)
+	_, err = store.db.Exec("UPDATE items SET unread = 0, read_at = :read_at WHERE id = :id",
+		sql.Named("read_at", tenDaysAgo), sql.Named("id", itemBookmarked.ID))
+	if err != nil {
+		t.Fatalf("failed setting read_at: %v", err)
+	}
+	_, err = store.CreateBookmark(1, &itemBookmarked.ID, &feed.ID, itemBookmarked.Link, itemBookmarked.Title, itemBookmarked.Content, itemBookmarked.PubDate, feed.Name)
+	if err != nil {
+		t.Fatalf("failed creating bookmark: %v", err)
+	}
+
+	// 5. Old read item with bookmark by link only (item_id is NULL) -> should NOT be purged
+	itemLinkBookmarked := mustCreateItem(t, store, feed.ID, "guid-link-bookmarked", "Link Bookmarked Item", "https://example.com/link-bookmarked", "Content", 100)
+	_, err = store.db.Exec("UPDATE items SET unread = 0, read_at = :read_at WHERE id = :id",
+		sql.Named("read_at", tenDaysAgo), sql.Named("id", itemLinkBookmarked.ID))
+	if err != nil {
+		t.Fatalf("failed setting read_at: %v", err)
+	}
+	_, err = store.CreateBookmark(1, nil, &feed.ID, itemLinkBookmarked.Link, itemLinkBookmarked.Title, itemLinkBookmarked.Content, itemLinkBookmarked.PubDate, feed.Name)
+	if err != nil {
+		t.Fatalf("failed creating link bookmark: %v", err)
+	}
+
+	// Run PurgeExpiredReadItems with 7-day retention (7 * 86400 seconds)
+	sevenDaysInSeconds := int64(7 * 86400)
+	affected, tombstones, err := store.PurgeExpiredReadItems(1, sevenDaysInSeconds)
+	if err != nil {
+		t.Fatalf("PurgeExpiredReadItems failed: %v", err)
+	}
+
+	// Exactly 1 item should have been purged (itemExpired)
+	if affected != 1 {
+		t.Errorf("expected 1 item purged, got %d", affected)
+	}
+	if len(tombstones) != 1 || tombstones[0].GUID != "guid-expired" {
+		t.Errorf("expected tombstone for guid-expired, got %+v", tombstones)
+	}
+
+	// Verify itemExpired is deleted
+	_, err = store.GetItem(1, itemExpired.ID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected itemExpired to be deleted, got err: %v", err)
+	}
+
+	// Verify others are intact
+	if _, err := store.GetItem(1, itemRecent.ID); err != nil {
+		t.Errorf("itemRecent should still exist: %v", err)
+	}
+	if _, err := store.GetItem(1, itemUnread.ID); err != nil {
+		t.Errorf("itemUnread should still exist: %v", err)
+	}
+	if _, err := store.GetItem(1, itemBookmarked.ID); err != nil {
+		t.Errorf("itemBookmarked should still exist: %v", err)
+	}
+	if _, err := store.GetItem(1, itemLinkBookmarked.ID); err != nil {
+		t.Errorf("itemLinkBookmarked should still exist: %v", err)
+	}
+
+	// Verify tombstone prevents re-ingestion
+	newCount, err := store.BatchCreateItemsIgnore(1, feed.ID, []BatchCreateItemInput{
+		{GUID: "guid-expired", Title: "Expired Reingest", Link: "https://example.com/expired", Content: "Content", PubDate: 100},
+	})
+	if err != nil {
+		t.Fatalf("BatchCreateItemsIgnore failed: %v", err)
+	}
+	if newCount != 0 {
+		t.Errorf("purged item should not be re-ingested, got newCount=%d", newCount)
+	}
+}
+
+func TestReadAtTracking(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	group := mustCreateGroup(t, store, "Test Group")
+	feed := mustCreateFeed(t, store, group.ID, "Feed 1", "https://example.com/feed", "https://example.com", "")
+	item := mustCreateItem(t, store, feed.ID, "guid-1", "Item 1", "https://example.com/1", "Content 1", 100)
+
+	// Initially unread: read_at must be 0
+	fetched, err := store.GetItem(1, item.ID)
+	if err != nil {
+		t.Fatalf("GetItem failed: %v", err)
+	}
+	if fetched.ReadAt != 0 {
+		t.Errorf("expected ReadAt=0 for unread item, got %d", fetched.ReadAt)
+	}
+
+	// Mark read
+	if err := store.UpdateItemUnread(1, item.ID, false); err != nil {
+		t.Fatalf("UpdateItemUnread(false) failed: %v", err)
+	}
+	fetched, err = store.GetItem(1, item.ID)
+	if err != nil {
+		t.Fatalf("GetItem failed: %v", err)
+	}
+	if fetched.ReadAt == 0 {
+		t.Errorf("expected ReadAt > 0 after marking read, got 0")
+	}
+
+	// Mark unread again
+	if err := store.UpdateItemUnread(1, item.ID, true); err != nil {
+		t.Fatalf("UpdateItemUnread(true) failed: %v", err)
+	}
+	fetched, err = store.GetItem(1, item.ID)
+	if err != nil {
+		t.Fatalf("GetItem failed: %v", err)
+	}
+	if fetched.ReadAt != 0 {
+		t.Errorf("expected ReadAt=0 after marking unread, got %d", fetched.ReadAt)
 	}
 }
 
